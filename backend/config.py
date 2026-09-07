@@ -55,6 +55,18 @@ COOKIES_FILE = env("COOKIES_FILE", "")
 GEMINI_API_KEY = env("GEMINI_API_KEY")
 GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.6-flash")
 
+# RANTAI FALLBACK MODEL: kalau model utama gagal (503 high demand, rate limit,
+# error server, dll), otomatis coba lagi model utama sampai GEMINI_PRIMARY_RETRIES
+# kali, lalu turun ke daftar model cadangan (GEMINI_FALLBACK_MODELS) satu per satu
+# (dalam urutan yang ditulis) sampai ada yang berhasil. Diam-diam log ke console
+# tiap kali pindah model, supaya kelihatan di log kapan fallback terjadi.
+GEMINI_PRIMARY_RETRIES = int(env("GEMINI_PRIMARY_RETRIES", "2"))  # percobaan model utama sebelum turun
+GEMINI_FALLBACK_MODELS = env(
+    "GEMINI_FALLBACK_MODELS",
+    "gemini-3.1-pro-preview,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-pro,gemini-2.5-flash",
+)
+GEMINI_RETRY_DELAY_SEC = float(env("GEMINI_RETRY_DELAY_SEC", "2.0"))  # jeda antar percobaan
+
 # ============ OUTPUT ============
 # "" = auto: 1080x1920 kalau sumber cukup besar, kalau tidak 720x1280.
 # Isi "1080" atau "720" untuk memaksa.
@@ -91,7 +103,7 @@ MOTION_BLUR_STRENGTH = float(env("MOTION_BLUR_STRENGTH", "0.35"))  # 0.1-0.5 (ke
 # SUBTITLE ala clipper profesional (opus.pro / snazo.app — wajar, bukan raksasa):
 SUBTITLE_FONT = env("SUBTITLE_FONT", "Komika Axis")       # gaya komik; install font-nya dulu
 SUBTITLE_CASE = env("SUBTITLE_CASE", "title")            # title = Huruf Besar Di Awal; upper; normal
-SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.045"))  # ±4.5% tinggi frame = wajar
+SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.047"))  # ±4.7% tinggi frame = wajar (sedikit lebih besar)
 SUBTITLE_Y_FRAC = float(env("SUBTITLE_Y_FRAC", "0.70"))         # ideal 60-75%: area paling bersih dari UI platform
 
 # SMART PLACEMENT (posisi subtitle pintar — tabrakan wajah, UI, teks bawaan, saliency)

@@ -1,6 +1,6 @@
 """
 Subtitle v3 — hasil BEDAH FRAME video tutorial MrBeast (pf9vd2sny0M):
-- Huruf Besar Di Awal, ukuran WAJAR (±4.5% tinggi frame) ala clipper profesional, bawah layar (±80%).
+- Huruf Besar Di Awal, ukuran WAJAR (±4.7% tinggi frame) ala clipper profesional, bawah layar (±80%).
 - PROGRESSIVE REVEAL: kata muncul satu-satu saat diucapkan (alpha pop-in).
 - TEKS BERSIH: tanpa titik/koma, spasi rapi (tanda seru/tanya dipertahankan).
 - BOUNCE: tiap kata pop dengan overshoot scale lalu settle (dari analisis: 48%
@@ -105,7 +105,7 @@ def _pick_emphasis(chunk) -> int:
 
 
 def _font_size(n_chars: int, width: int, height: int) -> int:
-    """Ukuran font adaptif: baseline wajar (±4.5% tinggi frame),
+    """Ukuran font adaptif: baseline wajar (±4.7% tinggi frame),
     mengecil bertingkat kalau frasa panjang, dan dijamin muat lebar frame."""
     fs = int(height * config.SUBTITLE_SIZE_FRAC)
     if n_chars > 8:
@@ -127,12 +127,20 @@ def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
     ol = max(4, int(fs_base * 0.045))
     events = []
     clip_dur = clip_end - clip_start
-    for chunk in _chunks(words):
+    chunks = _chunks(words)
+    for ci, chunk in enumerate(chunks):
         t0 = chunk[0]["start"] - clip_start
         t1 = chunk[-1]["end"] - clip_start + 0.12
         if t1 <= 0 or t0 >= clip_dur:
             continue
+        # ---- ANTI-TUMPANG TINDIH (pembicara cepat maupun lambat) ----
+        # Ekor +0.12 dtk jangan pernah melewati awal frasa berikutnya;
+        # timestamp whisper yang saling sedikit overlap pun ikut di-clamp.
+        if ci + 1 < len(chunks):
+            t1 = min(t1, chunks[ci + 1][0]["start"] - clip_start)
         t0 = max(0.0, t0)
+        if t1 - t0 < 0.05:  # nyaris nol setelah clamp -> frasa berikut menampilkannya
+            continue
         n_chars = sum(len(_clean(w["text"])) for w in chunk) + len(chunk) - 1
         fs = _font_size(n_chars, width, height)
         bord = max(4, int(fs * 0.045))

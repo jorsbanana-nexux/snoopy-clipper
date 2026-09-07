@@ -161,7 +161,7 @@ Analisis gaya subtitle (bedah 920 frame video tutorial MrBeast):
 - **kata muncul satu-satu** saat diucapkan → progressive reveal ✅ diadopsi
 - **48% kata dalam keadaan scale-up** → bounce overshoot per kata ✅ diadopsi
 - warna isi **putih** + highlight **kuning-emas** pada kata tertentu ✅ diadopsi
-- tinggi kata raksasa ±8% & posisi ±74% → ❌ TIDAK diadopsi untuk clipper; dinormalisasi ke ukuran wajar (±4.5%) dan posisi bawah layar (±80%) ala Opus/snazo — font raksasa cocok untuk video MrBeast sendiri, terlalu besar untuk klip berisi wajah + informasi
+- tinggi kata raksasa ±8% & posisi ±74% → ❌ TIDAK diadopsi untuk clipper; dinormalisasi ke ukuran wajar (±4.7%) dan posisi bawah layar (±80%) ala Opus/snazo — font raksasa cocok untuk video MrBeast sendiri, terlalu besar untuk klip berisi wajah + informasi
 
 Keputusan lain:
 - **faster-whisper small int8** di CPU: keseimbangan terbaik kecepatan/kualitas untuk low-spec (naikkan ke `medium` kalau PC kuat).
@@ -257,7 +257,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 |---|---|---|
 | `SUBTITLE_FONT` | Komika Axis | Wajib install font Komika Axis di sistem |
 | `SUBTITLE_CASE` | title | `title` = Huruf Besar Di Awal; `upper`; `normal` |
-| `SUBTITLE_SIZE_FRAC` | 0.045 | Ukuran wajar ±4.5% tinggi frame |
+| `SUBTITLE_SIZE_FRAC` | 0.047 | Ukuran wajar ±4.7% tinggi frame |
 | `SUBTITLE_Y_FRAC` | 0.70 | Posisi ideal (60-75% = area paling bersih dari UI platform) |
 | `PLACEMENT_SMART` | 1 | 0 = matikan smart placement (posisi fixed) |
 | `UI_SAFE_RIGHT` | 0.12 | Zona aman kanan (tombol like/comment/share) |

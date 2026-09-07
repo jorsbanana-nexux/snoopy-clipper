@@ -3,8 +3,15 @@ OTAK SNOOPY v2 — MULTIMODAL: kini bisa MELIHAT, bukan cuma membaca.
 Kirim transkrip + cuplikan frame (gambar, urut waktu) ke Gemini ->
 momen dipilih dari ISI + KUALITAS VISUAL (ekspresi, reaksi, aksi, pergantian adegan).
 Mau ganti model / prompt / logika scoring? UBAH FILE INI SAJA.
+
+RANTAI FALLBACK MODEL (baru): kalau model utama gagal (503 high demand, rate
+limit, error server, dll), otomatis coba lagi model utama sampai
+GEMINI_PRIMARY_RETRIES kali, lalu turun ke daftar model cadangan
+(GEMINI_FALLBACK_MODELS) satu per satu sampai ada yang berhasil.
+Semua diatur lewat .env — lihat config.py.
 """
 import json
+import time
 
 from . import config
 
@@ -45,11 +52,71 @@ def _frames_note(frames, interval):
     )
 
 
+def _fallback_models() -> list:
+    """Daftar model cadangan dari .env (GEMINI_FALLBACK_MODELS, dipisah koma),
+    urutan dipertahankan, model utama & duplikat dibuang."""
+    raw = config.GEMINI_FALLBACK_MODELS or ""
+    seen = {config.GEMINI_MODEL}
+    out = []
+    for m in raw.split(","):
+        m = m.strip()
+        if m and m not in seen:
+            out.append(m)
+            seen.add(m)
+    return out
+
+
+def _model_attempts() -> list:
+    """Urutan model yang akan dicoba: model utama diulang GEMINI_PRIMARY_RETRIES kali,
+    lalu tiap model cadangan sekali (dalam urutan .env) sampai ada yang lolos."""
+    retries = max(1, config.GEMINI_PRIMARY_RETRIES)
+    attempts = [config.GEMINI_MODEL] * retries
+    attempts += _fallback_models()
+    return attempts
+
+
+def _generate_with_fallback(client, types, parts):
+    """
+    Coba model utama sampai GEMINI_PRIMARY_RETRIES kali (jaga-jaga error
+    transient seperti 503 high-demand), lalu turun ke model cadangan satu per
+    satu (GEMINI_FALLBACK_MODELS) sampai ada yang berhasil. Kalau semua gagal,
+    lempar error terakhir dengan ringkasan semua percobaan.
+    """
+    attempts = _model_attempts()
+    errors = []
+    for i, model in enumerate(attempts):
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=parts,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.4,
+                ),
+            )
+            if i > 0:
+                print(f"[brain] berhasil pakai model '{model}' "
+                      f"(percobaan #{i + 1}/{len(attempts)})", flush=True)
+            return resp
+        except Exception as e:
+            errors.append(f"{model}: {e}")
+            print(f"[brain] model '{model}' gagal (percobaan #{i + 1}/{len(attempts)}): {e}",
+                  flush=True)
+            if i < len(attempts) - 1:
+                time.sleep(config.GEMINI_RETRY_DELAY_SEC)
+            continue
+    raise RuntimeError(
+        "Semua model Gemini gagal (utama + cadangan). Rincian:\n" + "\n".join(errors)
+    )
+
+
 def find_moments(transcript: dict, duration: float,
                  frames_dir=None, frame_interval=None) -> list:
     """
     Kirim transkrip (+ frame kalau ada) ke Gemini -> daftar momen tervalidasi.
     frames_dir: folder f_001.jpg, f_002.jpg, ... (frame ke-i = detik i*interval).
+    Model utama dicoba GEMINI_PRIMARY_RETRIES kali; kalau tetap gagal, turun ke
+    daftar model cadangan (GEMINI_FALLBACK_MODELS) satu per satu.
     """
     if not config.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY belum diisi di file .env")
@@ -81,14 +148,7 @@ def find_moments(transcript: dict, duration: float,
         ))
 
     client = genai.Client(api_key=config.GEMINI_API_KEY)
-    resp = client.models.generate_content(
-        model=config.GEMINI_MODEL,
-        contents=parts,  # prompt + frame, dalam urutan waktu
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.4,
-        ),
-    )
+    resp = _generate_with_fallback(client, types, parts)
     raw = json.loads(resp.text)
     moments = raw if isinstance(raw, list) else raw.get("moments", [])
     return _validate(moments, transcript["words"], duration)
