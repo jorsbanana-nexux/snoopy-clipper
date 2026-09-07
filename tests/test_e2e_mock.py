@@ -6,7 +6,7 @@ sys.path.insert(0, ".")
 
 from backend import pipeline, brain
 
-def mock_find_moments(transcript, duration, frames_dir=None, frame_interval=None):
+def mock_find_moments(transcript, duration, frames_dir=None, frame_interval=None, meta=None):
     words = transcript["words"]
     if not words:
         # transkrip platform (captions): pakai baris sebagai jangkar waktu

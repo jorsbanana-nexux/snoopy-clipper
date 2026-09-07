@@ -1,7 +1,10 @@
 """
-OTAK SNOOPY v2 — MULTIMODAL: kini bisa MELIHAT, bukan cuma membaca.
-Kirim transkrip + cuplikan frame (gambar, urut waktu) ke Gemini ->
-momen dipilih dari ISI + KUALITAS VISUAL (ekspresi, reaksi, aksi, pergantian adegan).
+OTAK SNOOPY v3 — TERLATIH + MULTIMODAL: berpikir KONTEKS DULU, baru memilih.
+Dikirim: judul + channel + transkrip (+ frame urut waktu) ke Gemini ->
+otak memahami topik/cerita/siapa saja (LANGKAH 1), menilai dari sudut pandang
+penonton acak (LANGKAH 2), lalu memilih momen paling berdaging & viral
+(LANGKAH 3). Semua dalam SATU panggilan — nol langkah/biaya tambahan.
+Deteksi otomatis video anak (dari pipeline) -> mode aman anak.
 Mau ganti model / prompt / logika scoring? UBAH FILE INI SAJA.
 
 RANTAI FALLBACK MODEL (baru): kalau model utama gagal (503 high demand, rate
@@ -15,26 +18,34 @@ import time
 
 from . import config
 
-PROMPT = """Kamu adalah editor video profesional kelas dunia yang ahli menemukan momen paling "berdaging" dari video panjang untuk dijadikan konten pendek viral (YouTube Shorts / TikTok / Reels). Kerjamu dipakai di video apa pun: podcast, vlog, gaming, reaksi, edukasi, hingga video anak — platform dan topik tidak penting, kualitas momen yang penting.
+PROMPT = """Kamu adalah OTAK SNOOPY v3 — editor video viral kelas dunia yang TERLATIH: kamu memikir ribuan klip viral sukses di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu tahu persis pola klip yang bikin penonton berhenti scroll.
+
+KONTEKS VIDEO:
+- Judul: {title}
+- Channel: {uploader}
+- Durasi: {duration} detik. Bahasa: {language}.
+{kids_note}
+{frames_note}
 
 Transkrip video (format [detik_awal-detik_akhir] teks):
 {transcript}
 
-{frames_note}
+PROSES TERLATIH — kerjakan 3 langkah berurutan, tulis hasilnya ringkas di kolom "analysis" (maks 5 kalimat):
+LANGKAH 1 — PAHAMI DULU (sebelum memilih): dari judul + channel + transkrip (+frame kalau ada), pahami: siapa saja yang terlibat, topik inti, jenis konten, dan DI MANA "DAGING"-nya. Contoh: judulnya tentang pencurian mobil -> cari di transkrip bagian di mana kisahnya DIBERITAHUKAN dengan detail (siapa, di mana, kapan, berapa rugi, reaksi emosinya) — dagingnya di situ, bukan di basa-basi pembuka.
+LANGKAH 2 — NILAI SEBAGAI PENONTON ACAK yang tidak tahu apa-apa soal video ini: bagian mana yang bikin kaget / "hah, serius?" / kagum / emosi / tertawa / penasaran sampai selesai? Bagian yang akan ditonton ulang dan dikomentari penonton — itulah kandidatnya.
+LANGKAH 3 — PILIH momen terbaik dengan ATURAN KETAT di bawah.
 
-Durasi total: {duration} detik. Bahasa transkrip: {language}.
+ATURAN KETAT momen:
+1. Utuh dan berdaging: konteks awal yang LANGSUNG jelas bagi penonton baru -> membangun -> pay-off / klimaks / twist / punchline / kesimpulan kuat. JANGAN basa-basi, iklan, sapaan kosong, atau momen asal tanpa isi.
+2. start TEPAT di kalimat pertama yang membuat penonton baru langsung paham konteksnya (contoh sempurna: "John, kenapa sih mobilmu bisa dicuri?" — pertanyaan + konteks dalam satu napas), end TEPAT setelah pay-off selesai. start & end HARUS timestamp yang benar-benar muncul di transkrip. Ini yang paling penting.
+3. Durasi tiap potongan {min_clip}-{max_clip} detik. Maksimal {max_clips} potongan terbaik, tidak boleh saling tumpang tindih.
+4. Gunakan FRAME (kalau dikirim) untuk menilai kualitas visual: ekspresi kuat, reaksi, aksi, kejadian di layar. Momen kuat di teks TAPI lemah/monoton secara visual harus kalah dari momen yang kuat di keduanya.
+5. Adaptif jenis konten: podcast/wawancara -> hot take, kisah pribadi, adu argumen, pengakuan mengejutkan; gaming -> clutch, rage, lucu tak terduga; berita/storytime -> bagian paling mengejutkan dengan detail paling spesifik; edukasi -> tip paling berguna dengan contoh nyata; vlog -> momen paling emosional/tak terduga.
+6. Judul + hook harus memancing "wajib tonton" dalam 1-2 detik TANPA membocorkan pay-off. Semua teks dalam bahasa transkrip.
+7. score 1-10 jujur (10 = wajib tonton) — jangan semuanya 9-10; urutkan dari yang terbaik.
 
-Pilih maksimal {max_clips} potongan TERBAIK dengan aturan ketat:
-1. Setiap potongan HARUS momen utuh yang berdaging: konteks awal yang langsung jelas -> membangun -> pay-off / klimaks / twist / punchline / kesimpulan kuat. JANGAN pilih basa-basi, iklan, sapaan kosong, atau momen asal tanpa isi.
-2. Gunakan FRAME untuk menilai kualitas visual momen: utamakan momen dengan ekspresi kuat, reaksi, aksi, atau kejadian visual yang menarik. Momen yang bagus di teks TAPI lemah/monoton secara visual harus kalah oleh momen yang kuat di keduanya.
-3. Durasi tiap potongan antara {min_clip}-{max_clip} detik.
-4. start & end HARUS timestamp yang benar-benar muncul di transkrip. start TEPAT di awal kalimat yang membuat konteks langsung dipahami penonton baru, end TEPAT setelah pay-off selesai — tidak terlalu awal (bingung), tidak terlalu akhir (bosen). Ini yang paling penting.
-5. Beri hook (kalimat/ide pembuka yang bikin penasaran dalam 1-2 detik), judul singkat menarik, dan score 1-10 (10 = wajib tonton).
-6. Potongan tidak boleh saling tumpang tindih.
-7. Judul, hook, dan reason ditulis dalam bahasa transkrip.
-
-Balas HANYA array JSON tanpa penjelasan lain:
-[{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "..."}}]"""
+Balas HANYA JSON (tanpa teks lain):
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "..."}}]}}"""
 
 
 def _frames_note(frames, interval):
@@ -49,6 +60,36 @@ def _frames_note(frames, interval):
         "(ekspresi, reaksi, aksi, kejadian di layar), pergantian adegan, "
         "dan siapa 'pemain utama' yang sedang dibahas/di-highlight. "
         "Transkrip tetap sumber timestamp utama; frame menilai kualitas visual."
+    )
+
+
+def _kids_note(is_kids: bool) -> str:
+    if not is_kids:
+        return ""
+    return ("\n- MODE ANAK (deteksi otomatis): ini video anak-anak. Pilih momen lucu, "
+            "imut, atau edukatif yang ramah keluarga; framing hangat & positif; "
+            "hook yang bikin penasaran secara manis. JANGAN framing dramatis/"
+            "klikbait gaya orang dewasa.\n")
+
+
+def _build_prompt(transcript: dict, duration: float, frames, frame_interval, meta=None) -> str:
+    """Bangun prompt v3: konteks (judul/channel/mode-anak) + proses 3 langkah.
+    Dipisah jadi fungsi supaya bisa diuji tanpa API."""
+    meta = meta or {}
+    lines = "\n".join(
+        f"[{l['start']:.1f}-{l['end']:.1f}] {l['text']}" for l in transcript["lines"]
+    )
+    return PROMPT.format(
+        transcript=lines,
+        title=(meta.get("title") or "—")[:200],
+        uploader=(meta.get("uploader") or "—")[:120],
+        kids_note=_kids_note(bool(meta.get("is_kids"))),
+        frames_note=_frames_note(frames, frame_interval or 0),
+        duration=round(duration),
+        language=transcript["language"],
+        max_clips=config.MAX_CLIPS,
+        min_clip=int(config.MIN_CLIP_SEC),
+        max_clip=int(config.MAX_CLIP_SEC),
     )
 
 
@@ -111,10 +152,12 @@ def _generate_with_fallback(client, types, parts):
 
 
 def find_moments(transcript: dict, duration: float,
-                 frames_dir=None, frame_interval=None) -> list:
+                 frames_dir=None, frame_interval=None, meta=None) -> list:
     """
-    Kirim transkrip (+ frame kalau ada) ke Gemini -> daftar momen tervalidasi.
-    frames_dir: folder f_001.jpg, f_002.jpg, ... (frame ke-i = detik i*interval).
+    Kirim transkrip + KONTEKS (judul/channel/mode-anak) + frame (kalau ada)
+    ke Gemini -> daftar momen tervalidasi. Tetap SATU panggilan LLM —
+    proses 3-langkah terjadi di dalam prompt, nol langkah tambahan.
+    meta: {"title","uploader","is_kids"} dari pipeline (downloader.get_info).
     Model utama dicoba GEMINI_PRIMARY_RETRIES kali; kalau tetap gagal, turun ke
     daftar model cadangan (GEMINI_FALLBACK_MODELS) satu per satu.
     """
@@ -128,18 +171,7 @@ def find_moments(transcript: dict, duration: float,
         from pathlib import Path
         frames = sorted(Path(frames_dir).glob("f_*.jpg"))[: config.BRAIN_MAX_FRAMES]
 
-    lines = "\n".join(
-        f"[{l['start']:.1f}-{l['end']:.1f}] {l['text']}" for l in transcript["lines"]
-    )
-    prompt = PROMPT.format(
-        transcript=lines,
-        frames_note=_frames_note(frames, frame_interval or 0),
-        duration=round(duration),
-        language=transcript["language"],
-        max_clips=config.MAX_CLIPS,
-        min_clip=int(config.MIN_CLIP_SEC),
-        max_clip=int(config.MAX_CLIP_SEC),
-    )
+    prompt = _build_prompt(transcript, duration, frames, frame_interval, meta)
 
     parts = [types.Part.from_text(text=prompt)]
     for f in frames:
@@ -150,8 +182,18 @@ def find_moments(transcript: dict, duration: float,
     client = genai.Client(api_key=config.GEMINI_API_KEY)
     resp = _generate_with_fallback(client, types, parts)
     raw = json.loads(resp.text)
-    moments = raw if isinstance(raw, list) else raw.get("moments", [])
-    return _validate(moments, transcript["words"], duration)
+    return _validate(_extract_moments(raw), transcript["words"], duration)
+
+
+def _extract_moments(raw) -> list:
+    """v3: {"analysis": "...", "moments": [...]} (proses berpikir terlatih).
+    Format lama (array polos) tetap diterima. Jawaman aneh -> list kosong."""
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        m = raw.get("moments", [])
+        return m if isinstance(m, list) else []
+    return []
 
 
 def _snap(t: float, words: list, mode: str) -> float:

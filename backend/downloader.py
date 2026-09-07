@@ -21,8 +21,41 @@ def _cookie_opts() -> dict:
     return {}
 
 
+def normalize_url(url: str) -> str:
+    """Normalisasi URL antar-platform agar ekstraktor yt-dlp tepat.
+    YouTube Kids -> YouTube biasa (video ID sama, ekstraktor utama lebih andal)."""
+    import re
+    m = re.match(r"^(https?://)(?:www\.|m\.)?youtubekids\.com/watch\?(.+)$",
+                 (url or "").strip(), re.I)
+    if m:
+        vm = re.search(r"(?:^|[?&])v=([\w-]{6,})", m.group(2))
+        if vm:
+            return f"{m.group(1)}www.youtube.com/watch?v={vm.group(1)}"
+    return url
+
+
+# sinyal video anak: host kids (pasti) atau kata kunci judul/channel (petunjuk)
+_KIDS_HINTS = (
+    "for kids", "kids video", "kids songs", "nursery", "rhymes", "cartoon",
+    "cocomelon", "lagu anak", "kartun", "anak-anak", "balita", "berhitung",
+    "cerita anak", "pendidikan anak",
+)
+
+
+def detect_kids(url: str, title: str, uploader: str) -> bool:
+    """Deteksi otomatis video anak (YouTube Kids / judul khas anak).
+    Dipakai otak utk mode 'aman anak': momen lucu/edukatif, framing hangat,
+    bukan klikbait dramatis. Deteksi string murni — biaya nol."""
+    u = (url or "").lower()
+    if "youtubekids." in u:
+        return True
+    hay = f"{title or ''} {uploader or ''}".lower()
+    return any(h in hay for h in _KIDS_HINTS)
+
+
 def get_info(url: str) -> dict:
     """Ambil metadata video (id, judul, durasi) tanpa download. Cepat."""
+    url = normalize_url(url)
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -44,6 +77,7 @@ def download(url: str, out_base, time_range=None) -> str:
     """Unduh video (maks config.MAX_SOURCE_HEIGHT) -> path file mp4 hasil merge.
     time_range=(start, end) detik: unduh HANYA rentang itu (download_ranges)
     — platform tanpa dukungan rentang otomatis fallback unduh penuh lalu memotong."""
+    url = normalize_url(url)
     h = config.MAX_SOURCE_HEIGHT
     if time_range:
         # unduhan rentang: WAJIB rantai tanpa filter ext (filter [ext=mp4] +
@@ -106,6 +140,7 @@ def get_info_local(path) -> dict:
 
 def download_audio(url: str, out_base) -> str:
     """Unduh HANYA audio (m4a/opus) — jalur fallback hemat untuk whisper full."""
+    url = normalize_url(url)
     opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": str(out_base) + ".%(ext)s",

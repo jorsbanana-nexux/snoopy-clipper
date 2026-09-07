@@ -59,9 +59,13 @@ def _ensure_worker():
 
 def create_job(url: str, local_path: str = None) -> str:
     """Mulai job. Berikan `url`, ATAU `local_path` untuk file yang sudah ada di disk."""
+    orig_url = (url or "").strip()
+    kids_url = "youtubekids." in orig_url.lower()  # sinyal kids sebelum dinormalisasi
+    url = downloader.normalize_url(orig_url)
     job_id = uuid.uuid4().hex[:12]
     job = {
         "id": job_id, "url": url or f"local:{local_path}", "local_path": local_path,
+        "kids_url": kids_url,
         "status": "queued", "step": "queue",
         "message": "Menunggu antrean…", "pct": 0, "eta_seconds": None,
         "clips": [], "error": None, "created": time.time(),
@@ -140,6 +144,7 @@ def _run(job_id):
         local = job.get("local_path")
         info = downloader.get_info_local(local) if local else downloader.get_info(job["url"])
         duration = info["duration"]
+        _jobs[job_id]["info"] = info  # konteks utk otak v3 (judul/channel/deteksi anak)
         if duration <= 0:
             raise RuntimeError("Durasi video tidak terbaca — coba URL lain.")
         _update(job_id, video=info, pct=5,
@@ -289,7 +294,18 @@ def _brain(job_id, transcript, duration, frames) -> list:
             message="Gemini menganalisis momen terbaik"
                     + (" (transkrip + visual)…" if frames_dir else " (transkrip lengkap)…"))
     t0 = time.time()
-    moments = brain.find_moments(transcript, duration, frames_dir, frame_interval)
+    # KONTEKS v3: judul + channel + deteksi anak -> otak pahami dulu, baru pilih
+    job = _jobs[job_id]
+    info = job.get("info") or {}
+    meta = {
+        "title": info.get("title", ""),
+        "uploader": info.get("uploader", ""),
+        "is_kids": bool(job.get("kids_url")) or downloader.detect_kids(
+            job["url"], info.get("title", ""), info.get("uploader", "")),
+    }
+    if meta["is_kids"]:
+        _update(job_id, message="Mode video anak terdeteksi — otak memilih momen ramah keluarga")
+    moments = brain.find_moments(transcript, duration, frames_dir, frame_interval, meta=meta)
     if not moments:
         raise RuntimeError("AI tidak menemukan momen yang layak jadi klip. Coba video lain.")
     _update(job_id, pct=50, message=f"{len(moments)} momen terpilih — mulai render "

@@ -12,6 +12,8 @@ import urllib.request
 
 import yt_dlp
 
+from .downloader import normalize_url
+
 # urutan preferensi bahasa (id = prioritas user)
 _LANG_PRIORITY = ["id", "en", "ja", "ko", "es", "pt", "zh-Hans", "zh", "ar"]
 
@@ -23,6 +25,7 @@ def fetch(url: str):
     -> None kalau platform/video tidak punya transkrip.
     """
     opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}
+    url = normalize_url(url)  # mis. YouTube Kids -> YouTube (transkrip tetap ketemu)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
         manual = info.get("subtitles") or {}
