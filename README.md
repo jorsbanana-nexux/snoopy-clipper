@@ -219,7 +219,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | `GEMINI_API_KEY` | — | **WAJIB**. Gratis di aistudio.google.com/apikey |
 | `GEMINI_MODEL` | gemini-2.0-flash | Model otak |
 | `WHISPER_MODEL` | small | tiny/base lebih cepat, medium lebih akurat |
-| `WHISPER_BEAM` | 5 | Beam search — 5 = anti-typo; 1 = tercepat |
+| `WHISPER_BEAM` | 1 | Beam search — 1 = tercepat (ketepatan waktu kata tetap, dari alignmen audio); 5 = anti-typo maksimal |
 | `WHISPER_COMPUTE` | int8 | Paling ringan di CPU |
 | `BRAIN_MULTIMODAL` | 1 | 0 = otak analisis teks saja (lebih cepat) |
 | `BRAIN_FRAME_INTERVAL` | 8 | 1 frame tiap N detik utk dilihat Gemini |
@@ -245,7 +245,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 ### Visual
 | Setting | Default | Keterangan |
 |---|---|---|
-| `GAME_ULTRA` | 1 | 0 = matikan grade (render tercepat) |
+| `GAME_ULTRA` | 0 | Efek game tetap jalan di 0; 1 = grade paling rame, render +40% |
 | `UNSHARP_AMOUNT` | 0.45 | Ketajaman tekstur (0 = off) |
 | `EQ_CONTRAST` / `EQ_GAMMA` / `EQ_SATURATION` | 1.06 / 0.94 / 1.12 | Bayangan pekat + warna hidup |
 | `WARM_HUE_DEG` | 2.0 | Rona kulit hangat (derajat) |
@@ -281,7 +281,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 
 **Font Komika Axis belum terpasang** — download gratis (cari "Komika Axis font"), install ke sistem (Windows: klik kanan .ttf → Install; Linux: copy ke ~/.fonts lalu `fc-cache -f`). Kalau tidak ada, libass otomatis pakai font lain.
 
-**Subtitle masih typo pada pembicara cepat** — set `WHISPER_BEAM=5` (default) dan coba `WHISPER_MODEL=medium` kalau PC kuat. Pipeline sudah memakai anti-drift (`condition_on_previous_text=False`) + VAD.
+**Subtitle masih typo pada pembicara cepat/audio berisik** — naikkan `WHISPER_BEAM=5` dan coba `WHISPER_MODEL=medium` kalau PC kuat. Default 1 = tercepat; kualitas waktu kata tidak terpengaruh beam. Pipeline sudah memakai anti-drift (`condition_on_previous_text=False`) + VAD.
 
 **Gemini error 429** — free tier kena limit; tunggu sebentar atau ganti `GEMINI_MODEL`.
 

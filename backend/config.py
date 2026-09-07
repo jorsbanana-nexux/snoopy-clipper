@@ -76,7 +76,7 @@ MAX_SOURCE_HEIGHT = int(env("MAX_SOURCE_HEIGHT", "1080"))  # turunkan ke 720 bua
 # ============ WHISPER (hemat CPU) ============
 WHISPER_MODEL = env("WHISPER_MODEL", "small")      # tiny / base / small / medium
 WHISPER_COMPUTE = env("WHISPER_COMPUTE", "int8")
-WHISPER_BEAM = int(env("WHISPER_BEAM", "5"))  # 5 = akurasi lebih baik; 1 = tercepat
+WHISPER_BEAM = int(env("WHISPER_BEAM", "1"))  # 1 = tercepat (ketepatan waktu kata tetap); 5 = anti-typo maksimal
 
 # ============ STRATEGI CEPAT (audio/video hanya seperlunya) ============
 # 1 = pakai transkrip bawaan platform (instan) untuk otak + unduh video HANYA
@@ -118,7 +118,7 @@ KARAOKE_FADE_MS = int(env("KARAOKE_FADE_MS", "70"))             # kecepatan tran
 
 # GRADE "GAME ULTRA": ketajaman tekstur + bayangan pekat + warna hidup + kulit hangat.
 # Semua filter MURAH (per-pixel, satu pass, biaya CPU kecil) — tetap low-spec friendly.
-GAME_ULTRA = env("GAME_ULTRA", "1").lower() in ("1", "true", "on")
+GAME_ULTRA = env("GAME_ULTRA", "0").lower() in ("1", "true", "on")
 UNSHARP_AMOUNT = float(env("UNSHARP_AMOUNT", "0.45"))    # texture ultra; 0 = off (0.3-0.6 subtle)
 EQ_CONTRAST = float(env("EQ_CONTRAST", "1.06"))          # kontras naik sedikit
 EQ_GAMMA = float(env("EQ_GAMMA", "0.94"))                # gamma turun sedikit -> shadow pekat
