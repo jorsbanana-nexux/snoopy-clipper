@@ -159,10 +159,13 @@ def _build_tracks(samples: list, src_w: int) -> list:
 
 
 def _speaking_score(track: dict):
-    """Skor 'sedang bicara' per titik: variance gerak mulut (window +-3 sampel), relatif."""
+    """Skor 'sedang bicara' per titik: variance gerak mulut (window +-2 sampel), relatif.
+    (Window +-3 membuat deteksi ganti pembicara telat +-3 dtk pada sampling 1 dtk
+     -> kamera masih menyorot pembicara LAMA beberapa detik setelah ganti -> wajah
+     pembicara baru terpotong. +-2 = deteksi lebih gesit, tetap stabil dgn hysteresis.)"""
     mouths = [(si, f["mouth"]) for si, f in track["points"]]
     for si, f in track["points"]:
-        win = [m for s2, m in mouths if abs(s2 - si) <= 3]
+        win = [m for s2, m in mouths if abs(s2 - si) <= 2]
         if len(win) < 2:
             track["speak"][si] = 0.0
             continue
@@ -251,18 +254,34 @@ def _focus_path(samples, tracks, focus, lead_sec, interval):
             ty[si] = _cy_at(tracks[fti], si)
     _fill_nearest(tx)
     _fill_nearest(ty)
+    # LOOK-AHEAD TRANSISI ditanam di path MENTAH (sebelum smoothing):
+    # S-curve smoothstep (C1) ke pembicara berikutnya, selesai 2 sampel sebelum
+    # flip terdeteksi (antisipasi lag window skor bicara +-2 sampel). Karena
+    # transisi menggantikan step mentah, EMA tidak punya 'step response' yang
+    # bisa membekas sebagai lesi dip / kamera merayap di path final.
     lead = max(1, int(round(lead_sec / interval)))
     for i in range(1, n):
-        if focus[i] is not None and focus[i] != focus[i - 1]:
-            j = max(0, i - lead)
-            for k in range(j, i):  # kamera mulai menyorot SEBELUM ganti pembicara
-                tx[k] = tx[i]
-                ty[k] = ty[i]
+        if focus[i] is not None and focus[i - 1] is not None and focus[i] != focus[i - 1]:
+            end_k = max(1, i - 2)
+            start_k = max(0, end_k - lead)
+            bx, by = list(tx), list(ty)
+            for k in range(start_k, end_k + 1):
+                r = (k - start_k) / max(1, end_k - start_k)
+                w = r * r * (3 - 2 * r)  # smoothstep ease-in-out
+                tx[k] = bx[k] * (1 - w) + _center_at(tracks[focus[i]], k) * w
+                ty[k] = by[k] * (1 - w) + _cy_at(tracks[focus[i]], k) * w
+            for k in range(end_k + 1, i):  # jaga lag deteksi: ikut pembicara baru
+                tx[k] = _center_at(tracks[focus[i]], k)
+                ty[k] = _cy_at(tracks[focus[i]], k)
     return times, tx, ty
 
 
-def _smooth(xs: list, alpha=0.35) -> list:
-    """EMA maju-mundur (zero-phase): halus tanpa jeda/geser fase."""
+def _smooth(xs: list, alpha=0.55) -> list:
+    """EMA maju-mundur (zero-phase): halus tanpa jeda/geser fase.
+    alpha 0.55: cukup meredam jitter deteksi. Kehalusan antar-sampel (C1)
+    sudah dijamin interpolasi KUBIK Catmull-Rom (cutter._x_expr), jadi EMA
+    TIDAK perlu berat — EMA berat memakan timing look-ahead (kamera telat
+    sampai ke pembicara baru)."""
     y = xs[0]
     out = []
     for x in xs:
@@ -328,13 +347,15 @@ def track(video_path, times: list, src_w: int, crop_w: int, t0: float = 0.0):
         return [], [], vision
     tracks = _build_tracks(samples, src_w)
     if not tracks:
-        return [], []
+        return [], [], vision  # (bug lama: 2 nilai -> ValueError saat unpack)
     for tr in tracks:
         _speaking_score(tr)
     focus = _focus_timeline(tracks, len(samples))
     t2, tx, ty = _focus_path(samples, tracks, focus, config.LEAD_AHEAD_SEC,
                              config.FACE_SAMPLE_INTERVAL)
     tx = _clamp_speed(t2, _smooth(tx), src_w)
+    # CATATAN: cukup satu pass _smooth — kecepatan kontinu (C1) di tiap knot
+    # sudah dijamin interpolasi KUBIK Catmull-Rom di cutter._x_expr.
     keyframes = _keyframes(t2, tx, src_w, crop_w)
     # WAJIB: ffmpeg -ss me-reset t ke 0 (waktu LOKAL klip) -> keyframe ikut digeser.
     # t0 = detik awal klip pada sumber (mode absolut). Mode segmen lokal: t0=0.

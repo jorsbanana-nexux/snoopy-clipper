@@ -61,20 +61,41 @@ def crop_size(src_w: int, src_h: int):
 
 
 def _x_expr(keyframes: list, crop_w: int, src_w: int) -> str:
-    """Ekspresi ffmpeg untuk pan horizontal: interpolasi linear antar keyframe.
-    Kecepatan kontinu by construction (path dibangun offline dengan clamp kecepatan)."""
-    lo, hi = crop_w // 2, src_w - crop_w // 2
-    pts = [(t, min(max(x, lo), hi) - crop_w // 2) for t, x in keyframes]
+    """Ekspresi ffmpeg untuk pan horizontal: interpolasi KUBIK Catmull-Rom antar
+    keyframe -> kecepatan kontinu (C1) di tiap titik — pan terasa mulus, bukan
+    'macet skala kecil' seperti interpolasi linear (kecepatan melompat di tiap
+    keyframe). Posisi sub-pixel (float, tanpa pembulatan int kasar).
+    Biaya runtime: nihil (hanya string ekspresi lebih panjang, di-evaluasi
+    per-frame sama seperti sebelumnya)."""
+    lo, hi = crop_w / 2, src_w - crop_w / 2
+    pts = [(t, min(max(x, lo), hi) - crop_w / 2) for t, x in keyframes]
     if not pts:
         return str((src_w - crop_w) // 2)
     if len(pts) == 1:
-        return str(int(pts[0][1]))
-    expr = f"{int(pts[-1][1])}"
-    for i in range(len(pts) - 2, -1, -1):
-        t0, x0 = pts[i]
-        t1, x1 = pts[i + 1]
+        return f"{pts[0][1]:.2f}"
+    if len(pts) == 2:
+        # hanya 2 titik: linear (terjadi pada pan pendek statis) — tetap float
+        (t0, x0), (t1, x1) = pts
         frac = f"max(0,min(1,(t-{t0:.2f})/({t1 - t0:.2f})))"
-        expr = f"if(lt(t,{t1:.2f}),{int(x0)}+({int(x1) - int(x0)})*({frac}),{expr})"
+        return f"{x0:.2f}+({x1 - x0:.2f})*({frac})"
+
+    def seg_expr(i: int) -> str:
+        # kubik Catmull-Rom segmen pts[i] -> pts[i+1]; endpoint di-duplicate
+        (t0, x0), (t1, x1) = pts[i], pts[i + 1]
+        p0 = pts[i - 1][1] if i - 1 >= 0 else x0
+        p3 = pts[i + 2][1] if i + 2 < len(pts) else x1
+        a1 = 0.5 * (x1 - p0)
+        a2 = 0.5 * (2 * p0 - 5 * x0 + 4 * x1 - p3)
+        a3 = 0.5 * (3 * x0 - p0 - 3 * x1 + p3)
+        dt = max(t1 - t0, 0.01)
+        u = f"max(0,min(1,(t-{t0:.2f})/{dt:.2f}))"
+        return (f"{x0:.2f}+({a1:.4f})*{u}+({a2:.4f})*{u}*{u}"
+                f"+({a3:.4f})*{u}*{u}*{u}")
+
+    expr = f"{pts[-1][1]:.2f}"
+    for i in range(len(pts) - 2, -1, -1):
+        t1 = pts[i + 1][0]
+        expr = f"if(lt(t,{t1:.2f}),{seg_expr(i)},{expr})"
     return expr
 
 
