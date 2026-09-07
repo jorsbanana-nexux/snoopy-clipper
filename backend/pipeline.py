@@ -315,7 +315,8 @@ def _brain(job_id, transcript, duration, frames) -> list:
 
 # ---------------- kata-per-kata klip ----------------
 
-def _clip_words(job_id, info, m, i, full_words, seg_path=None, absolute_shift=None):
+def _clip_words(job_id, info, m, i, full_words, seg_path=None, absolute_shift=None,
+                on_progress=None, clip_dur=None):
     """
     Kata-per-kata satu klip (untuk subtitle MrBeast).
     Prioritas: slice dari whisper full (kalau ada, gratis), else whisper segmen kecil.
@@ -337,7 +338,8 @@ def _clip_words(job_id, info, m, i, full_words, seg_path=None, absolute_shift=No
             # dari video penuh: potong hanya rentang klip (kecil, cepat)
             cutter.extract_audio(config.DOWNLOADS_DIR / f"{info['id']}.mp4", wav_path,
                                  time_range=(m["start"], m["end"]))
-    transcript = transcriber.transcribe(wav_path)
+    transcript = transcriber.transcribe(
+        wav_path, expected_duration=clip_dur, on_progress=on_progress)
     words = transcript["words"]  # waktu LOKAL rentang
     if absolute_shift is not None:
         words = [{"start": w["start"] + absolute_shift, "end": w["end"] + absolute_shift,
@@ -367,6 +369,9 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                 message=f"Klip {i + 1}/{total}: {m['title']}",
                 eta_seconds=sum(render_est[i:]))
         start, end = m["start"], m["end"]
+        # fase senyap diberi pesan agar UI tidak tampak 'diam'
+        _update(job_id, step="render", pct=base_pct + int(span * 0.2),
+                message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
         times = []
         t = max(0.0, start - 0.5)
         while t <= end + 0.5:
@@ -374,8 +379,16 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             t += config.FACE_SAMPLE_INTERVAL
         # t0=start: keyframe digeser ke waktu LOKAL (ffmpeg -ss reset t ke 0)
         keyframes, focus_y, vision = facetrack.track(video_path, times, src_w, cw, t0=start)
+        _update(job_id, step="render", pct=base_pct + int(span * 0.35),
+                message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+
+        def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+            _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+
         words = _clip_words(job_id, info, m, i, full_words,
-                            absolute_shift=None if full_words else start)
+                            absolute_shift=None if full_words else start,
+                            on_progress=word_prog, clip_dur=end - start)
         clip_id = f"clip_{i + 1:02d}"
         ass_file = workdir / f"{clip_id}.ass"
         ass_file.write_text(
@@ -384,8 +397,12 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
         out_path = vdir / f"{clip_id}.mp4"
         t0 = time.time()
 
+        _update(job_id, step="render", pct=base_pct + int(span * 0.9),
+                message=f"Klip {i + 1}/{total}: {m['title']} — render…",
+                eta_seconds=sum(render_est[i:]))
+
         def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(render_est[i:])):
-            _update(job_id, pct=min(99, base_pct + int(span * p)),
+            _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
                     eta_seconds=max(3.0, rsum * (1 - p)))
 
         cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
@@ -444,7 +461,9 @@ def _render_ranged(job_id, info, moments, full_words):
         cw, ch = cutter.crop_size(src_w, src_h)
         tw, th = cutter.pick_target(src_w, src_h)
 
-        # face tracking di timeline SEGMEN (lokal)
+        # face tracking di timeline SEGMEN (lokal) — fase senyap diberi pesan
+        _update(job_id, step="render", pct=base_pct + int(span * 0.25),
+                message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
         times = []
         t = 0.0
         while t <= seg_dur + 0.5:
@@ -453,19 +472,27 @@ def _render_ranged(job_id, info, moments, full_words):
         keyframes, focus_y, vision = facetrack.track(seg_path, times, src_w, cw, t0=0.0)
 
         # kata-per-kata di timeline lokal: slice whisper full (digeser) atau whisper segmen
-        words = _clip_words_local(info, m, i, seg_path, full_words)
+        _update(job_id, step="render", pct=base_pct + int(span * 0.35),
+                message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+
+        def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+            _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+
+        words = _clip_words_local(info, m, i, seg_path, full_words,
+                                  on_progress=word_prog, seg_dur=seg_dur)
         clip_id = f"clip_{i + 1:02d}"
         ass_file = workdir / f"{clip_id}.ass"
         ass_file.write_text(
             subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
             encoding="utf-8")
         out_path = vdir / f"{clip_id}.mp4"
-        _update(job_id, step="render", pct=base_pct,
+        _update(job_id, step="render", pct=base_pct + int(span * 0.9),
                 message=f"Klip {i + 1}/{total}: {m['title']} — render…",
                 eta_seconds=sum(rd_est[i:]))
 
         def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(rd_est[i:])):
-            _update(job_id, pct=min(99, base_pct + int(span * p)),
+            _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
                     eta_seconds=max(3.0, rsum * (1 - p)))
 
         cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
@@ -474,7 +501,8 @@ def _render_ranged(job_id, info, moments, full_words):
     _save(job_id, info, meta_clips)
 
 
-def _clip_words_local(info, m, i, seg_path, full_words):
+def _clip_words_local(info, m, i, seg_path, full_words,
+                     on_progress=None, seg_dur=None):
     """Kata-per-kata di timeline LOKAL segmen: slice whisper full (digeser turun)
     atau whisper segmen kecil (menit-an saja, bukan video penuh)."""
     if full_words:
@@ -487,7 +515,8 @@ def _clip_words_local(info, m, i, seg_path, full_words):
     wav_path = config.DOWNLOADS_DIR / f"{info['id']}_c{i:02d}.wav"
     if not wav_path.exists():
         cutter.extract_audio(seg_path, wav_path)
-    return transcriber.transcribe(wav_path)["words"]
+    return transcriber.transcribe(
+        wav_path, expected_duration=seg_dur, on_progress=on_progress)["words"]
 
 
 # ---------------- meta & selesai ----------------
