@@ -1,5 +1,21 @@
 const $ = (s) => document.querySelector(s);
 let pollTimer = null;
+let etaTimer = null;
+
+// Hitung-mundur ETA LIVE di sisi browser: backend hanya mengirim estimasi saat
+// pesan baru muncul; di antara itu angka tick turun sendiri tiap detik —
+// jadi "Sisa waktu" tidak pernah tampak beku walau fase sedang berjalan lama.
+function startEtaTicker(etaSeconds) {
+  clearInterval(etaTimer);
+  if (etaSeconds == null || isNaN(etaSeconds) || etaSeconds <= 0) return;
+  const recvAt = Date.now();
+  etaTimer = setInterval(() => {
+    const el = $("#eta");
+    if (!el) return;
+    const left = etaSeconds - (Date.now() - recvAt) / 1000;
+    el.textContent = left > 0 ? fmtEta(left) : "sebentar lagi…";
+  }, 1000);
+}
 
 const STEPS = [
   ["info", "Info video"],
@@ -61,6 +77,7 @@ function poll(jobId) {
     renderJob(job);
     if (job.status === "done" || job.status === "error") {
       clearInterval(pollTimer);
+      clearInterval(etaTimer);
       $("#go").disabled = false;
       if (job.status === "done") loadLibrary();
     }
@@ -82,10 +99,15 @@ function renderJob(job) {
     ${job.video ? `<h3>${job.video.title}</h3>` : ""}
     <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
     <p class="msg">${job.message || ""}</p>
-    ${job.status !== "error" ? `<p class="eta">Sisa waktu: <b>${fmtEta(job.eta_seconds)}</b> · ${pct}%</p>` : ""}
+    ${job.status !== "error" && job.status !== "done"
+        ? `<p class="eta">Sisa waktu: <b id="eta">${fmtEta(job.eta_seconds)}</b> · ${pct}%</p>`
+        : ""}
     <div class="steps">${stepsHtml}</div>
     ${err}
   `;
+  if (job.status !== "error" && job.status !== "done") {
+    startEtaTicker(job.eta_seconds);
+  }
 }
 
 async function loadLibrary() {
