@@ -51,7 +51,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | **Potongan presisi** | Start/end di-snap ke timestamp kata asli (toleransi 2 dtk) + seek akurat frame-level — tak lebih, tak kurang. |
 | **Face tracking v2** | Semua wajah di-track; "siapa bicara" dari gerakan mulut; hysteresis anti flip-flop; **look-ahead 2 dtk** (kamera menyorot SEBELUM pembicara berikutnya bicara/muncul); kecepatan pan di-clamp (tanpa teleport/overshoot). |
 | **Smart Placement v4** | Subtitle tidak pernah menutupi: wajah/objek utama (collision bbox, geser atas kepala/bawah dagu), UI platform (safe zone kanan & bawah ala TikTok/Reels), teks bawaan video (deteksi baris teks — pengganti OCR ringan), dan area saliency (objek menarik mata dihindari). Semua numpang di pass sampling wajah = biaya nyaris nol. |
-| **Subtitle premium v3** | Font **Komika Axis**, Huruf Besar Di Awal, teks bersih tanpa titik/koma, **kata muncul satu-satu saat diucapkan (pop + bounce)**, kata penekanan **kuning-emas**, ukuran wajar & posisi bawah layar (ala Opus/snazo), naik otomatis kalau menutupi wajah. |
+| **Subtitle premium v3** | Font **Komika Axis**, Huruf Besar Di Awal, teks bersih tanpa titik/koma, **kata muncul satu-satu saat diucapkan (pop + bounce)**, **KARAOKE STABILO biru MrBeast**: kata yang sedang diucapkan biru, selesai → putih, biru berjalan mengikuti ucapan terus-menerus, ukuran wajar & posisi bawah layar (ala Opus/snazo), naik otomatis kalau menutupi wajah. |
 | **Grade "Ultra Settings"** | eq (bayangan pekat) + hue (kulit hangat) + unsharp 3x3 (texture tajam) — dipilih dari benchmark biaya CPU. |
 | **Motion blur ala game** | Aktif HANYA saat kamera pan (tmix), halus, subtitle tetap tajam. |
 | **Output** | MP4 9:16, 1080x1920 (auto 720x1280 kalau sumber kecil), H.264 + AAC, auto-detect encoder GPU. |
@@ -105,7 +105,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 **⑦ Render per klip (satu pass)** —
 - *Face tracking* (`facetrack.py`): YuNet mendeteksi **semua** wajah + landmark mulut tiap 1 dtk **hanya di area klip**. Wajah dipairing antar frame jadi track; "siapa bicara" dinilai dari variance gerakan sudut mulut; pilihan fokus diberi **hysteresis** (anti flip-flop). Timeline fokus digeser **2 dtk lebih awal** (look-ahead) → kamera sudah menyorot sebelum pembicara ganti. Path dipolish: EMA zero-phase + clamp kecepatan → pan mulus tanpa overshoot.
 - *Smart placement* (`placement.py`): sebelum render, ukuran bounding box teks dihitung dari jumlah huruf & ukuran font, lalu posisi dipilih dari kandidat di sekitar posisi ideal (±70% tinggi frame) dengan skor penalti: tabrakan dengan bounding box wajah (paling besar), tumpang tindih teks bawaan video, area saliency (objek menarik mata), dan jarak dari posisi ideal — plus safe zone platform (kanan 12% utk tombol like/share, bawah 15% utk username/deskripsi). Semua data vision diambil dari pass sampling wajah yang sama (biaya tambahan nyaris nol — tanpa MediaPipe/YOLO/EasyOCR yang berat di PC low-spec).
-- *Subtitle* (`subtitles.py`): dibangun dari kata-kata di klip. Teks dibersihkan (tanpa titik/koma) + Huruf Besar Di Awal, tiap kata muncul saat diucapkan (alpha pop-in) + bounce overshoot 118%, satu kata penekanan (angka/kata kuat/kata terpanjang) diwarnai **kuning-emas**, posisi dari smart placement, wrap 2 baris untuk frasa panjang.
+- *Subtitle* (`subtitles.py`): dibangun dari kata-kata di klip. Teks dibersihkan (tanpa titik/koma) + Huruf Besar Di Awal, tiap kata muncul saat diucapkan (alpha pop-in) + bounce overshoot 118%, **karaoke stabilo**: kata aktif **biru MrBeast** selama diucapkan lalu kembali putih — biru berjalan kata-demi-kata mengikuti ucapan, posisi dari smart placement, wrap 2 baris untuk frasa panjang.
 - *Encode* (`cutter.py`): satu perintah ffmpeg: `crop` (posisi x mengikuti expression keyframe) → `scale` → `eq` (kontras/gamma/saturasi) → `hue` (rona kulit hangat) → `unsharp 3x3` (luma saja) → `tmix` (motion blur, hanya aktif saat pan cepat) → `ass` (burn subtitle) → H.264 (GPU kalau ada, kalau tidak x264 veryfast) + AAC.
 
 **⑧ Library** — klip disimpan `library/<video_id>/clip_01.mp4` dst + `meta.json` (judul, skor, hook, dll). Frontend mem-polling `GET /api/jobs/{id}` untuk progress, lalu `GET /api/library` untuk grid klip.
@@ -160,7 +160,7 @@ Semua pilihan visual/performa dipilih dari **pengukuran nyata**, bukan selera:
 Analisis gaya subtitle (bedah 920 frame video tutorial MrBeast):
 - **kata muncul satu-satu** saat diucapkan → progressive reveal ✅ diadopsi
 - **48% kata dalam keadaan scale-up** → bounce overshoot per kata ✅ diadopsi
-- warna isi **putih** + highlight **kuning-emas** pada kata tertentu ✅ diadopsi
+- warna isi **putih** + **karaoke stabilo biru** pada kata yang sedang diucapkan ✅ diadopsi (biru → putih, mengikuti ucapan)
 - tinggi kata raksasa ±8% & posisi ±74% → ❌ TIDAK diadopsi untuk clipper; dinormalisasi ke ukuran wajar (±4.7%) dan posisi bawah layar (±80%) ala Opus/snazo — font raksasa cocok untuk video MrBeast sendiri, terlalu besar untuk klip berisi wajah + informasi
 
 Keputusan lain:
@@ -265,7 +265,8 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | `SUBTITLE_MIN_Y_FRAC` | 0.18 | Batas atas posisi subtitle |
 | `SUBTITLE_POP` | 1.18 | Overshoot bounce tiap kata |
 | `SUBTITLE_POP_MS` | 80 | Durasi pop (ms) |
-| `HIGHLIGHT_COLOR` | 00C8FF | Warna emas penekanan (format BGR ASS) |
+| `HIGHLIGHT_COLOR` | FFAA00 | Biru stabilo karaoke MrBeast (#00AAFF, format BGR ASS) |
+| `KARAOKE_FADE_MS` | 70 | Kecepatan transisi warna biru↔putih (ms) |
 
 ---
 

@@ -5,7 +5,7 @@ Subtitle v3 — hasil BEDAH FRAME video tutorial MrBeast (pf9vd2sny0M):
 - TEKS BERSIH: tanpa titik/koma, spasi rapi (tanda seru/tanya dipertahankan).
 - BOUNCE: tiap kata pop dengan overshoot scale lalu settle (dari analisis: 48%
   kata terlihat dalam keadaan scale-up di frame sampling).
-- Warna: putih + KUNING-EMAS untuk kata penekanan (angka/kata kuat/kata terpanjang).
+- KARAOKE STABILO: kata AKTIF biru stabilo MrBeast saat diucapkan -> putih begitu selesai; biru berjalan mengikuti ucapan kata-demi-kata.
 - SMART location: tetap hindari wajah pembicara (turun warisan v2).
 - SMART size: font adaptif memastikan muat lebar frame.
 Implementasi ASS murni: 1 event per frasa, per-kata override block
@@ -27,13 +27,6 @@ Style: Snoop,{font},{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-
-# kata penekanan ( Indonesia + Inggris) -> diberi warna emas
-_EMPHASIS = {
-    "gila", "banget", "wow", "keren", "paling", "besar", "hebat", "ajaib",
-    "big", "huge", "crazy", "insane", "omg", "wtf", "epic", "best", "worst",
-    "never", "always", "free", "million", "first", "last", "no", "yes",
-}
 
 
 def _fmt(t: float) -> str:
@@ -95,15 +88,6 @@ def _chunks(words: list, max_chars=26, max_words=6) -> list:
     return chunks
 
 
-def _pick_emphasis(chunk) -> int:
-    """Index kata yang di-highlight emas: kata angka/penekanan, kalau tidak ada -> terpanjang."""
-    for i, w in enumerate(chunk):
-        t = _clean(w["text"]).lower()
-        if t in _EMPHASIS or any(c.isdigit() for c in t):
-            return i
-    return max(range(len(chunk)), key=lambda i: len(chunk[i]["text"]))
-
-
 def _font_size(n_chars: int, width: int, height: int) -> int:
     """Ukuran font adaptif: baseline wajar (±4.7% tinggi frame),
     mengecil bertingkat kalau frasa panjang, dan dijamin muat lebar frame."""
@@ -154,25 +138,29 @@ def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
             fy = _y_at(focus_y, mid)
             y = int(height * 0.38) if (fy is not None and fy > 0.55) else int(height * config.SUBTITLE_Y_FRAC)
             x = width // 2
-        # ---- per-kata: muncul saat diucapkan + bounce overshoot ----
-        emph_i = _pick_emphasis(chunk)
+        # ---- per-kata: KARAOKE STABILO (biru mengikuti ucapan) ----
+        # Kata AKTIF = biru stabilo; begitu selesai diucapkan -> putih lagi;
+        # kata berikutnya biru saat mulai diucapkan — terus-menerus.
+        hl_ms = max(10, config.KARAOKE_FADE_MS)
         parts = []
-        for i, w in enumerate(chunk):
+        for w in chunk:
             wr = max(0.0, w["start"] - clip_start - t0)  # relatif EVENT start (syarat \t)
+            we = max(wr, w["end"] - clip_start - t0)
             text = _apply_case(_safe(_clean(w["text"])))
             fade = max(0, int(round(wr * 100)) * 10)  # ms, dibulatkan 10ms biar rapi
+            fede = max(fade, int(round(we * 100)) * 10)  # akhir kata (ms)
             pop = config.SUBTITLE_POP * 100
             ms = config.SUBTITLE_POP_MS
-            # WARN WAJIB per blok: reset ke putih, kecuali kata penekanan
-            # (kalau tidak, warna emas bocor ke kata berikutnya)
-            color = (f"\\c&H{config.HIGHLIGHT_COLOR}&" if i == emph_i
-                     else "\\c&HFFFFFF&")
             parts.append(
                 "{\\alpha&HFF&"
                 f"\\t({fade},{fade + 35},\\alpha&H00&)"
-                f"\\fscx100\\fscy100{color}"
+                f"\\fscx100\\fscy100\\c&HFFFFFF&"
                 f"\\t({fade},{fade + ms},\\fscx{pop:.0f}\\fscy{pop:.0f})"
                 f"\\t({fade + ms},{fade + ms * 2 + 40},\\fscx100\\fscy100)"
+                # karaoke: biru stabilo HANYA selama kata ini diucapkan,
+                # lalu kembali putih — biru berjalan mengikuti ucapan.
+                f"\\t({fade},{min(fade + hl_ms, fede)},\\c&H{config.HIGHLIGHT_COLOR}&)"
+                f"\\t({fede},{fede + hl_ms},\\c&HFFFFFF&)"
                 f"}}{text} "
             )
         events.append(

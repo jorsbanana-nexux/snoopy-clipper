@@ -113,7 +113,8 @@ UI_SAFE_BOTTOM = float(env("UI_SAFE_BOTTOM", "0.15"))   # sisi bawah: username/d
 SUBTITLE_MIN_Y_FRAC = float(env("SUBTITLE_MIN_Y_FRAC", "0.18"))  # jangan lebih atas dari ini
 SUBTITLE_POP = float(env("SUBTITLE_POP", "1.18"))               # overshoot bounce per kata
 SUBTITLE_POP_MS = int(env("SUBTITLE_POP_MS", "80"))             # durasi pop (ms)
-HIGHLIGHT_COLOR = env("HIGHLIGHT_COLOR", "00C8FF")              # BGR ASS: emas MrBeast
+HIGHLIGHT_COLOR = env("HIGHLIGHT_COLOR", "FFAA00")              # BGR ASS: BIRU STABILO (#00AAFF RGB) ala MrBeast
+KARAOKE_FADE_MS = int(env("KARAOKE_FADE_MS", "70"))             # kecepatan transisi warna karaoke (ms)
 
 # GRADE "GAME ULTRA": ketajaman tekstur + bayangan pekat + warna hidup + kulit hangat.
 # Semua filter MURAH (per-pixel, satu pass, biaya CPU kecil) — tetap low-spec friendly.
