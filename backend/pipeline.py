@@ -329,7 +329,7 @@ def _clip_words(job_id, info, m, i, full_words, seg_path=None, absolute_shift=No
                  if w["end"] > m["start"] + 0.2 and w["start"] < m["end"] - 0.2]
         if words:
             return words
-    wav_path = config.DOWNLOADS_DIR / f"{info['id']}_c{i:02d}.wav"
+    wav_path = config.DOWNLOADS_DIR / f"{info['id']}_c-s{m['start']:.2f}-e{m['end']:.2f}.wav"
     if not wav_path.exists():
         if seg_path is not None:
             # segmen rentang: audio sudah sekecil klipnya
@@ -410,6 +410,9 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
+            av_warn = cutter.av_duration_check(out_path)
+            if av_warn:
+                _update(job_id, message=f"Klip {i + 1}/{total}: {av_warn}")
             drift = _drift(time.time() - t0, render_est[i])
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
@@ -439,7 +442,7 @@ def _render_ranged(job_id, info, moments, full_words):
 
     # tes dukungan rentang dengan klip pertama (fallback rapi kalau tidak didukung)
     m0 = moments[0]
-    seg0 = config.DOWNLOADS_DIR / f"{info['id']}_seg01.mp4"
+    seg0 = _seg_base(info, m0).with_suffix(".mp4")
     if not seg0.exists():
         _update(job_id, step="render", pct=50,
                 message=f"Klip 1/{total}: {m0['title']} — unduh rentang…",
@@ -448,7 +451,7 @@ def _render_ranged(job_id, info, moments, full_words):
             def dl0(frac, m0=m0, total=total):
                 _update(job_id, step="render", pct=50 + int(3 * frac),
                         message=f"Klip 1/{total}: {m0['title']} — unduh rentang {int(frac * 100)}%")
-            downloader.download(url, config.DOWNLOADS_DIR / f"{info['id']}_seg01",
+            downloader.download(url, _seg_base(info, m0),
                                 time_range=(m0["start"], m0["end"]), on_progress=dl0)
         except Exception:
             _update(job_id, message="Rentang tidak didukung platform — unduh video penuh…")
@@ -463,7 +466,7 @@ def _render_ranged(job_id, info, moments, full_words):
         base_pct = 50 + int(45 * i / total)
         span = max(1, int(45 / total))
         try:  # tahan gagal per-klip: satu klip error tidak boleh merobek semuanya
-            seg_base = config.DOWNLOADS_DIR / f"{info['id']}_seg{i + 1:02d}"
+            seg_base = _seg_base(info, m)
             seg_path = seg_base.with_suffix(".mp4")
             if not seg_path.exists():
                 _update(job_id, step="render", pct=base_pct,
@@ -524,6 +527,9 @@ def _render_ranged(job_id, info, moments, full_words):
             cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
+            av_warn = cutter.av_duration_check(out_path)
+            if av_warn:
+                _update(job_id, message=f"Klip {i + 1}/{total}: {av_warn}")
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
         except Exception as e:
@@ -550,11 +556,20 @@ def _clip_words_local(info, m, i, seg_path, full_words,
                  if w["end"] > m["start"] + 0.2 and w["start"] < m["end"] - 0.2]
         if words:
             return words
-    wav_path = config.DOWNLOADS_DIR / f"{info['id']}_c{i:02d}.wav"
+    wav_path = Path(seg_path).with_suffix(".wav")  # ikut nama segmen (di-key rentang)
     if not wav_path.exists():
         cutter.extract_audio(seg_path, wav_path)
     return transcriber.transcribe(
         wav_path, expected_duration=seg_dur, on_progress=on_progress)["words"]
+
+
+def _seg_base(info, m) -> Path:
+    """Nama file segmen di-key RENTANG WAKTU (bukan nomor klip) — aman untuk
+    re-run: otak boleh memilih momen berbeda di run berikutnya tanpa
+    memakai segmen lama yang basi (bug: klip lama tampil momen yang salah)."""
+    # key tanpa titik (dengan_suffix aman): perpuluahan detik -> integer
+    k0, k1 = int(round(m["start"] * 10)), int(round(m["end"] * 10))
+    return config.DOWNLOADS_DIR / f"{info['id']}_s{k0:05d}-e{k1:05d}"
 
 
 def _bgm_track(job_id, m):

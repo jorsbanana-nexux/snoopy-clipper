@@ -6,6 +6,7 @@ blend halus dengan frame sebelumnya — penonton lihat gerakan sinematik, bukan 
 Auto-detect encoder GPU (NVENC) kalau ada; kalau tidak, x264 preset hemat CPU.
 Seek akurat frame-level (-ss sebelum -i) supaya potongan pas: tak lebih, tak kurang.
 """
+import json
 import os
 import subprocess
 import time
@@ -170,6 +171,27 @@ def extract_audio(video_path, wav_path, time_range=None):
     cmd += ["-i", str(video_path), "-vn", "-ac", "1", "-ar", "16000",
             "-c:a", "pcm_s16le", str(wav_path)]
     subprocess.run(cmd, check=True)
+
+
+def av_duration_check(out_path):
+    """Sanity A/V output: audio wajib >= durasi video (apad menjamin ini).
+    Return pesan peringatan kalau mencurigakan, None kalau sehat.
+    Alat diagnostik murah (<50ms) — masalah 'suara hilang' bisa terdeteksi
+    sejak render, bukan menunggu dilihat penonton."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration",
+             "-of", "json", str(out_path)],
+            capture_output=True, text=True, timeout=30)
+        dur = {}
+        for st in json.loads(r.stdout or "{}").get("streams", []):
+            dur[st.get("codec_type")] = float(st.get("duration") or 0)
+        va, vv = dur.get("audio", 0.0), dur.get("video", 0.0)
+        if vv > 0 and va > 0 and va < vv - 0.5:
+            return f"peringatan A/V: audio {va:.1f}s < video {vv:.1f}s (cek sumber)"
+    except Exception:
+        pass
+    return None
 
 
 def probe_duration(path) -> float:
