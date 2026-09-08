@@ -123,7 +123,15 @@ UNSHARP_AMOUNT = float(env("UNSHARP_AMOUNT", "0.45"))    # texture ultra; 0 = of
 EQ_CONTRAST = float(env("EQ_CONTRAST", "1.06"))          # kontras naik sedikit
 EQ_GAMMA = float(env("EQ_GAMMA", "0.94"))                # gamma turun sedikit -> shadow pekat
 EQ_SATURATION = float(env("EQ_SATURATION", "1.12"))     # warna lebih hidup
-WARM_HUE_DEG = float(env("WARM_HUE_DEG", "2.0"))        # rotasi hue hangat (derajat) -> rona
+WARM_HUE_DEG = float(env("WARM_HUE_DEG", "2.0"))
+
+# ============ BGM VIRAL (incompetech / Kevin MacLeod, CC BY 4.0) ============
+# Mood dipilih OTAK di panggilan Gemini yang sama (nol biaya/waktu tambahan).
+# Track diunduh SEKALI per track lalu cache permanen (mono 64k, ~0.5-1.5MB).
+# BGM wajib selalu ada; intensitas kecil & nyaman. Kredit otomatis -> meta.json.
+BGM = env("BGM", "1").lower() in ("1", "true", "on")
+BGM_VOLUME = float(env("BGM_VOLUME", "0.15"))  # 15% dari suara utama
+BGM_DIR = BASE_DIR / "bgm"        # rotasi hue hangat (derajat) -> rona
 # kemerahan kulit ala subsurface scattering; filter hue = paling murah (ovh ~5%)
 
 # OTAK MULTIMODAL: kirim cuplikan frame ke Gemini supaya bisa "melihat" video

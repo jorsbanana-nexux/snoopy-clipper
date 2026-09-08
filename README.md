@@ -45,6 +45,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | Fitur | Detail |
 |---|---|
 | **1 otak AI** | Gemini (gratis tier cukup). Satu-satunya layanan eksternal. |
+| **BGM viral otomatis** | Otak menentukan mood tiap klip (comedy/upbeat/epic/tension/mystery/emotional/chill/action) di panggilan yang sama → BGM profesional Kevin MacLeod (CC BY 4.0) dicampur volume rendah 15% + fade halus. Track diunduh SEKALI lalu cache permanen (mono ~0.5-1.5MB) — nol unduhan per klip. **BGM wajib selalu ada**, tidak pernah kosong. Kredit tersimpan otomatis (meta.json + `description.txt`). |
 | **Otak ELITE v4** | Gemini (model tertinggi duluan, turun otomatis) menerima **judul + channel + transkrip + frame** → berpikir KONTEKS DULU → menilai seperti penonton acak → PILIH dengan standar editor legendaris (retensi 2 dtk, curiosity gap, trigger share/save, hanya momen score 7+). **Jumlah klip = keputusan otak sesuai kualitas video** (bukan kuota tetap). SATU panggilan — nol langkah ekstra. |
 | **Semua platform** | Apapun yang didukung yt-dlp: YouTube, TikTok, Instagram, X, Facebook, dll. URL **YouTube Kids otomatis dinormalisasi** + **deteksi video anak** (URL kids / judul khas) → otak masuk mode aman anak (momen lucu/edukatif, framing hangat). |
 | **Momen berdaging** | Prompt ketat 3-langkah terlatih: PAHAMI DULU → nilai sebagai penonton acak → konteks → membangun → pay-off. Adaptif jenis konten (podcast/gaming/storytime/edukasi/anak). Basa-basi/iklan/momen asal ditolak. |
@@ -246,6 +247,8 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | Setting | Default | Keterangan |
 |---|---|---|
 | `GAME_ULTRA` | 0 | Efek game tetap jalan di 0; 1 = grade paling rame, render +40% |
+| `BGM` | 1 | 1 = BGM otomatis per klip; 0 = matikan |
+| `BGM_VOLUME` | 0.15 | Intensitas BGM (15% dari suara utama — kecil & nyaman) |
 | `UNSHARP_AMOUNT` | 0.45 | Ketajaman tekstur (0 = off) |
 | `EQ_CONTRAST` / `EQ_GAMMA` / `EQ_SATURATION` | 1.06 / 0.94 / 1.12 | Bayangan pekat + warna hidup |
 | `WARM_HUE_DEG` | 2.0 | Rona kulit hangat (derajat) |

@@ -23,7 +23,7 @@ import uuid
 from pathlib import Path
 
 from . import (config, downloader, transcriber, brain, captions,
-              facetrack, subtitles, cutter, library)
+              facetrack, subtitles, cutter, library, bgm)
 
 _jobs = {}
 _lock = threading.Lock()
@@ -406,10 +406,13 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                 _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
                         eta_seconds=max(3.0, rsum * (1 - p)))
 
+            bgm_track = _bgm_track(job_id, m) if config.BGM else None
             cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
-                               src_w, src_h, out_path, workdir, on_progress=on_progress)
+                               src_w, src_h, out_path, workdir, on_progress=on_progress,
+                               bgm=bgm_track)
             drift = _drift(time.time() - t0, render_est[i])
-            meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+            meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
+                                         (bgm_track or {}).get("credit", "")))
         except Exception as e:
             traceback.print_exc()
             _update(job_id, message=f"Klip {i + 1}/{total} ({m['title']}) gagal: {e} — "
@@ -517,9 +520,12 @@ def _render_ranged(job_id, info, moments, full_words):
                 _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
                         eta_seconds=max(3.0, rsum * (1 - p)))
 
+            bgm_track = _bgm_track(job_id, m) if config.BGM else None
             cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
-                               src_w, src_h, out_path, workdir, on_progress=on_progress)
-            meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+                               src_w, src_h, out_path, workdir, on_progress=on_progress,
+                               bgm=bgm_track)
+            meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
+                                         (bgm_track or {}).get("credit", "")))
         except Exception as e:
             traceback.print_exc()
             _update(job_id, message=f"Klip {i + 1}/{total} ({m['title']}) gagal: {e} — "
@@ -551,12 +557,34 @@ def _clip_words_local(info, m, i, seg_path, full_words,
         wav_path, expected_duration=seg_dur, on_progress=on_progress)["words"]
 
 
+def _bgm_track(job_id, m):
+    """BGM utk satu klip: mood dari otak -> track lokal (unduh SEKALI lalu cache).
+    Tidak pernah boleh menggagalkan render: error apapun -> klip tetap jalan
+    tanpa BGM (pesan di UI), bukan gagal total."""
+    try:
+        title = bgm.pick(m.get("bgm_mood"), _jobs[job_id].get("bgm_used", []))
+        if not bgm.track_path(title).exists():
+            _update(job_id, message=f"BGM: mengunduh '{title}' sekali saja "
+                                    f"(cache permanen, klip berikutnya instan)…")
+            bgm.ensure_track(title)
+        used = _jobs[job_id].setdefault("bgm_used", [])
+        if title not in used:
+            used.append(title)
+        return {"path": str(bgm.track_path(title)), "volume": config.BGM_VOLUME,
+                "credit": bgm.credit(title)}
+    except Exception:
+        traceback.print_exc()
+        _update(job_id, message="BGM dilewati (gagal menyiapkan) — render lanjut tanpa bgm…")
+        return None
+
+
 # ---------------- meta & selesai ----------------
 
-def _clip_meta(clip_id, m, tw, th, info) -> dict:
+def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
     return {
         "id": clip_id, "title": m["title"], "hook": m.get("hook", ""),
         "score": m.get("score", 0), "reason": m.get("reason", ""),
+        "bgm": bgm_credit,
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,

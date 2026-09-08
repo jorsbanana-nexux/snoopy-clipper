@@ -214,7 +214,7 @@ def extract_frames(video_path, out_dir, duration: float) -> float:
 
 
 def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
-                out_path, workdir, on_progress=None):
+                out_path, workdir, on_progress=None, bgm=None):
     """
     Render satu klip (satu pass): crop pintar + motion blur + subtitle burn + encode.
     Motion blur diaplikasikan SEBELUM subtitle supaya teks selalu tajam.
@@ -236,13 +236,35 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
         parts.append(f"ass='{ass_rel_path}'")
     vf = ",".join(parts)
 
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
-        "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
-        "-vf", vf, *enc,
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-        "-progress", "pipe:1", str(out_path),
-    ]
+    if bgm:  # BGM: satu pass yang sama, volume rendah + fade — nyaris nol waktu tambah
+        vol = float(bgm.get("volume", 0.15))
+        fin = min(0.8, clip_dur / 4)
+        fout_d = min(1.2, clip_dur / 4)
+        a_complex = (
+            f"[0:v]{vf}[v];"
+            f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
+            f"volume={vol:.3f},"
+            f"afade=t=in:st=0:d={fin:.3f},"
+            f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm];"
+            f"[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+        )
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
+            "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
+            "-stream_loop", "-1", "-i", str(bgm["path"]),
+            "-filter_complex", a_complex,
+            "-map", "[v]", "-map", "[aout]", *enc,
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            "-progress", "pipe:1", str(out_path),
+        ]
+    else:
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
+            "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
+            "-vf", vf, *enc,
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            "-progress", "pipe:1", str(out_path),
+        ]
     proc = subprocess.Popen(cmd, cwd=str(workdir), stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True)
     last = 0.0

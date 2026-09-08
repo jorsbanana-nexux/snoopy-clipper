@@ -46,9 +46,10 @@ ATURAN KETAT momen:
 6. Judul + hook harus memancing "wajib tonton" dalam 1-2 detik TANPA membocorkan pay-off. Semua teks dalam bahasa transkrip.
 7. score 1-10 jujur (10 = wajib tonton). Hanya sertakan momen score 7 ke atas — di bawah itu buang; klip biasa-biasa saja = penonton scroll lewat = views mati.
 8. Tes akhir untuk tiap kandidat seperti editor legendaris: "kalau klip ini diunggah, apakah orang SHARE / SAVE / komentar 'apasih'?" Kalau tidak ada yang akan, jangan pilih. Utamakan momen yang menonton sekali lalu menonton ulang (loop).
+9. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
 
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "..."}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "bgm_mood": "comedy"}}]}}"""
 
 
 def _frames_note(frames, interval):
@@ -231,6 +232,7 @@ def _validate(moments: list, words: list, duration: float) -> list:
             "hook": str(m.get("hook", ""))[:120],
             "score": m.get("score", 0),
             "reason": str(m.get("reason", ""))[:200],
+            "bgm_mood": str(m.get("bgm_mood", ""))[:20],
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
     return out[: config.MAX_CLIPS]
