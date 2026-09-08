@@ -365,50 +365,61 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
     for i, m in enumerate(moments):
         base_pct = 50 + int(45 * i / total)
         span = max(1, int(45 / total))
-        _update(job_id, step="render", pct=base_pct,
-                message=f"Klip {i + 1}/{total}: {m['title']}",
-                eta_seconds=sum(render_est[i:]))
-        start, end = m["start"], m["end"]
-        # fase senyap diberi pesan agar UI tidak tampak 'diam'
-        _update(job_id, step="render", pct=base_pct + int(span * 0.2),
-                message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
-        times = []
-        t = max(0.0, start - 0.5)
-        while t <= end + 0.5:
-            times.append(round(t, 2))
-            t += config.FACE_SAMPLE_INTERVAL
-        # t0=start: keyframe digeser ke waktu LOKAL (ffmpeg -ss reset t ke 0)
-        keyframes, focus_y, vision = facetrack.track(video_path, times, src_w, cw, t0=start)
-        _update(job_id, step="render", pct=base_pct + int(span * 0.35),
-                message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+        try:  # tahan gagal per-klip: satu klip error tidak boleh merobek semuanya
+            _update(job_id, step="render", pct=base_pct,
+                    message=f"Klip {i + 1}/{total}: {m['title']}",
+                    eta_seconds=sum(render_est[i:]))
+            start, end = m["start"], m["end"]
+            # fase senyap diberi pesan agar UI tidak tampak 'diam'
+            _update(job_id, step="render", pct=base_pct + int(span * 0.2),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
+            times = []
+            t = max(0.0, start - 0.5)
+            while t <= end + 0.5:
+                times.append(round(t, 2))
+                t += config.FACE_SAMPLE_INTERVAL
+            # t0=start: keyframe digeser ke waktu LOKAL (ffmpeg -ss reset t ke 0)
+            keyframes, focus_y, vision = facetrack.track(video_path, times, src_w, cw, t0=start)
+            _update(job_id, step="render", pct=base_pct + int(span * 0.35),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
 
-        def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
-            _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
-                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
+                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
 
-        words = _clip_words(job_id, info, m, i, full_words,
-                            absolute_shift=None if full_words else start,
-                            on_progress=word_prog, clip_dur=end - start)
-        clip_id = f"clip_{i + 1:02d}"
-        ass_file = workdir / f"{clip_id}.ass"
-        ass_file.write_text(
-            subtitles.build_ass(words, focus_y, vision, tw, th, start, end),
-            encoding="utf-8")
-        out_path = vdir / f"{clip_id}.mp4"
-        t0 = time.time()
+            words = _clip_words(job_id, info, m, i, full_words,
+                                absolute_shift=None if full_words else start,
+                                on_progress=word_prog, clip_dur=end - start)
+            clip_id = f"clip_{i + 1:02d}"
+            ass_file = workdir / f"{clip_id}.ass"
+            ass_file.write_text(
+                subtitles.build_ass(words, focus_y, vision, tw, th, start, end),
+                encoding="utf-8")
+            out_path = vdir / f"{clip_id}.mp4"
+            t0 = time.time()
 
-        _update(job_id, step="render", pct=base_pct + int(span * 0.9),
-                message=f"Klip {i + 1}/{total}: {m['title']} — render…",
-                eta_seconds=sum(render_est[i:]))
+            _update(job_id, step="render", pct=base_pct + int(span * 0.9),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — render…",
+                    eta_seconds=sum(render_est[i:]))
 
-        def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(render_est[i:])):
-            _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
-                    eta_seconds=max(3.0, rsum * (1 - p)))
+            def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(render_est[i:])):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
+                        eta_seconds=max(3.0, rsum * (1 - p)))
 
-        cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
-                           src_w, src_h, out_path, workdir, on_progress=on_progress)
-        drift = _drift(time.time() - t0, render_est[i])
-        meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+            cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
+                               src_w, src_h, out_path, workdir, on_progress=on_progress)
+            drift = _drift(time.time() - t0, render_est[i])
+            meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+        except Exception as e:
+            traceback.print_exc()
+            _update(job_id, message=f"Klip {i + 1}/{total} ({m['title']}) gagal: {e} — "
+                                    f"lanjut ke klip berikutnya…")
+            continue
+    if not meta_clips:
+        raise RuntimeError("Semua klip gagal dirender — cek log server & coba lagi.")
+    if len(meta_clips) < total:
+        _update(job_id, message=f"Selesai: {len(meta_clips)}/{total} klip berhasil "
+                                f"(yang gagal dilewati — klip sukses tetap tersimpan)")
     _save(job_id, info, meta_clips)
 
 
@@ -431,8 +442,11 @@ def _render_ranged(job_id, info, moments, full_words):
                 message=f"Klip 1/{total}: {m0['title']} — unduh rentang…",
                 eta_seconds=sum(dl_est) + sum(wh_est) + sum(rd_est))
         try:
+            def dl0(frac, m0=m0, total=total):
+                _update(job_id, step="render", pct=50 + int(3 * frac),
+                        message=f"Klip 1/{total}: {m0['title']} — unduh rentang {int(frac * 100)}%")
             downloader.download(url, config.DOWNLOADS_DIR / f"{info['id']}_seg01",
-                                time_range=(m0["start"], m0["end"]))
+                                time_range=(m0["start"], m0["end"]), on_progress=dl0)
         except Exception:
             _update(job_id, message="Rentang tidak didukung platform — unduh video penuh…")
             video_path = _download_full(job_id, info)
@@ -445,59 +459,77 @@ def _render_ranged(job_id, info, moments, full_words):
     for i, m in enumerate(moments):
         base_pct = 50 + int(45 * i / total)
         span = max(1, int(45 / total))
-        seg_base = config.DOWNLOADS_DIR / f"{info['id']}_seg{i + 1:02d}"
-        seg_path = seg_base.with_suffix(".mp4")
-        if not seg_path.exists():
-            _update(job_id, step="render", pct=base_pct,
-                    message=f"Klip {i + 1}/{total}: {m['title']} — unduh rentang "
-                            f"{int(m['start'])}-{int(m['end'])}d…",
-                    eta_seconds=sum(dl_est[i:]) + sum(wh_est[i:]) + sum(rd_est[i:]))
-            t0 = time.time()
-            downloader.download(url, seg_base, time_range=(m["start"], m["end"]))
-        seg_dur = cutter.probe_duration(seg_path)
-        if seg_dur <= 0.5:
-            raise RuntimeError(f"Segmen klip {i + 1} gagal (durasi {seg_dur:.1f}s)")
-        src_w, src_h = facetrack.get_dims(seg_path)
-        cw, ch = cutter.crop_size(src_w, src_h)
-        tw, th = cutter.pick_target(src_w, src_h)
+        try:  # tahan gagal per-klip: satu klip error tidak boleh merobek semuanya
+            seg_base = config.DOWNLOADS_DIR / f"{info['id']}_seg{i + 1:02d}"
+            seg_path = seg_base.with_suffix(".mp4")
+            if not seg_path.exists():
+                _update(job_id, step="render", pct=base_pct,
+                        message=f"Klip {i + 1}/{total}: {m['title']} — unduh rentang "
+                                f"{int(m['start'])}-{int(m['end'])}d…",
+                        eta_seconds=sum(dl_est[i:]) + sum(wh_est[i:]) + sum(rd_est[i:]))
+                t0 = time.time()
 
-        # face tracking di timeline SEGMEN (lokal) — fase senyap diberi pesan
-        _update(job_id, step="render", pct=base_pct + int(span * 0.25),
-                message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
-        times = []
-        t = 0.0
-        while t <= seg_dur + 0.5:
-            times.append(round(t, 2))
-            t += config.FACE_SAMPLE_INTERVAL
-        keyframes, focus_y, vision = facetrack.track(seg_path, times, src_w, cw, t0=0.0)
+                def dl_prog(frac, i=i, m=m, base_pct=base_pct, span=span, total=total):
+                    _update(job_id, step="render",
+                            pct=base_pct + int(span * (0.05 + 0.2 * frac)),
+                            message=f"Klip {i + 1}/{total}: {m['title']} — unduh rentang {int(frac * 100)}%")
 
-        # kata-per-kata di timeline lokal: slice whisper full (digeser) atau whisper segmen
-        _update(job_id, step="render", pct=base_pct + int(span * 0.35),
-                message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+                downloader.download(url, seg_base, time_range=(m["start"], m["end"]),
+                                    on_progress=dl_prog)
+            seg_dur = cutter.probe_duration(seg_path)
+            if seg_dur <= 0.5:
+                raise RuntimeError(f"Segmen klip {i + 1} gagal (durasi {seg_dur:.1f}s)")
+            src_w, src_h = facetrack.get_dims(seg_path)
+            cw, ch = cutter.crop_size(src_w, src_h)
+            tw, th = cutter.pick_target(src_w, src_h)
 
-        def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
-            _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
-                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+            # face tracking di timeline SEGMEN (lokal) — fase senyap diberi pesan
+            _update(job_id, step="render", pct=base_pct + int(span * 0.25),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
+            times = []
+            t = 0.0
+            while t <= seg_dur + 0.5:
+                times.append(round(t, 2))
+                t += config.FACE_SAMPLE_INTERVAL
+            keyframes, focus_y, vision = facetrack.track(seg_path, times, src_w, cw, t0=0.0)
 
-        words = _clip_words_local(info, m, i, seg_path, full_words,
-                                  on_progress=word_prog, seg_dur=seg_dur)
-        clip_id = f"clip_{i + 1:02d}"
-        ass_file = workdir / f"{clip_id}.ass"
-        ass_file.write_text(
-            subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
-            encoding="utf-8")
-        out_path = vdir / f"{clip_id}.mp4"
-        _update(job_id, step="render", pct=base_pct + int(span * 0.9),
-                message=f"Klip {i + 1}/{total}: {m['title']} — render…",
-                eta_seconds=sum(rd_est[i:]))
+            # kata-per-kata di timeline lokal: slice whisper full (digeser) atau whisper segmen
+            _update(job_id, step="render", pct=base_pct + int(span * 0.35),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
 
-        def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(rd_est[i:])):
-            _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
-                    eta_seconds=max(3.0, rsum * (1 - p)))
+            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
+                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
 
-        cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
-                           src_w, src_h, out_path, workdir, on_progress=on_progress)
-        meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+            words = _clip_words_local(info, m, i, seg_path, full_words,
+                                      on_progress=word_prog, seg_dur=seg_dur)
+            clip_id = f"clip_{i + 1:02d}"
+            ass_file = workdir / f"{clip_id}.ass"
+            ass_file.write_text(
+                subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
+                encoding="utf-8")
+            out_path = vdir / f"{clip_id}.mp4"
+            _update(job_id, step="render", pct=base_pct + int(span * 0.9),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — render…",
+                    eta_seconds=sum(rd_est[i:]))
+
+            def on_progress(p, i=i, base_pct=base_pct, span=span, rsum=sum(rd_est[i:])):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.9 + 0.1 * p))),
+                        eta_seconds=max(3.0, rsum * (1 - p)))
+
+            cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
+                               src_w, src_h, out_path, workdir, on_progress=on_progress)
+            meta_clips.append(_clip_meta(clip_id, m, tw, th, info))
+        except Exception as e:
+            traceback.print_exc()
+            _update(job_id, message=f"Klip {i + 1}/{total} ({m['title']}) gagal: {e} — "
+                                    f"lanjut ke klip berikutnya…")
+            continue
+    if not meta_clips:
+        raise RuntimeError("Semua klip gagal dirender — cek log server & coba lagi.")
+    if len(meta_clips) < total:
+        _update(job_id, message=f"Selesai: {len(meta_clips)}/{total} klip berhasil "
+                                f"(yang gagal dilewati — klip sukses tetap tersimpan)")
     _save(job_id, info, meta_clips)
 
 

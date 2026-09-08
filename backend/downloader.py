@@ -3,6 +3,7 @@ Unduh video dari URL platform apa pun (YouTube, TikTok, Instagram, dsb) via yt-d
 File cache di downloads/ — video yang sama tidak diunduh dua kali.
 """
 import glob
+import time
 from pathlib import Path
 
 import yt_dlp
@@ -73,10 +74,12 @@ def get_info(url: str) -> dict:
     }
 
 
-def download(url: str, out_base, time_range=None) -> str:
+def download(url: str, out_base, time_range=None, on_progress=None) -> str:
     """Unduh video (maks config.MAX_SOURCE_HEIGHT) -> path file mp4 hasil merge.
     time_range=(start, end) detik: unduh HANYA rentang itu (download_ranges)
-    — platform tanpa dukungan rentang otomatis fallback unduh penuh lalu memotong."""
+    — platform tanpa dukungan rentang otomatis fallback unduh penuh lalu memotong.
+    on_progress(fraksi 0..1): callback live utk indikator unduh (throttle 2 dtk,
+    aman: error di hook tidak pernah menggagalkan unduhan)."""
     url = normalize_url(url)
     h = config.MAX_SOURCE_HEIGHT
     if time_range:
@@ -107,6 +110,23 @@ def download(url: str, out_base, time_range=None) -> str:
         from yt_dlp.utils import download_range_func
         opts["download_ranges"] = download_range_func(None, [(time_range[0], time_range[1])])
         opts["force_keyframes_at_cuts"] = True  # potongan akurat frame-level
+    if on_progress:
+        _last = [0.0]
+        def _hook(d):
+            try:  # hook hanya indikator — jangan pernah gagalkan unduhan
+                if d.get("status") != "downloading":
+                    return
+                now = time.time()
+                if now - _last[0] < 2.0:  # throttle: update tiap 2 dtk saja
+                    return
+                _last[0] = now
+                tot = d.get("total_bytes_estimate") or d.get("total_bytes") or 0
+                got = d.get("downloaded_bytes") or 0
+                if tot:
+                    on_progress(max(0.0, min(1.0, got / tot)))
+            except Exception:
+                pass
+        opts["progress_hooks"] = [_hook]
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         try:

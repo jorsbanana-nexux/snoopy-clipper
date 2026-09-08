@@ -53,7 +53,7 @@ COOKIES_FILE = env("COOKIES_FILE", "")
 
 # ============ OTAK AI (Gemini) — satu-satunya layanan AI eksternal ============
 GEMINI_API_KEY = env("GEMINI_API_KEY")
-GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.1-pro-preview")  # tertinggi duluan, turun otomatis kalau bermasalah
 
 # RANTAI FALLBACK MODEL: kalau model utama gagal (503 high demand, rate limit,
 # error server, dll), otomatis coba lagi model utama sampai GEMINI_PRIMARY_RETRIES
@@ -63,8 +63,8 @@ GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_PRIMARY_RETRIES = int(env("GEMINI_PRIMARY_RETRIES", "2"))  # percobaan model utama sebelum turun
 GEMINI_FALLBACK_MODELS = env(
     "GEMINI_FALLBACK_MODELS",
-    "gemini-3.1-pro-preview,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-pro,gemini-2.5-flash",
-)
+    "gemini-2.5-pro,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-2.5-flash",
+)  # urutan TURUN dari yang paling tinggi: pro dulu, lalu flash terbaru -> lama
 GEMINI_RETRY_DELAY_SEC = float(env("GEMINI_RETRY_DELAY_SEC", "2.0"))  # jeda antar percobaan
 
 # ============ OUTPUT ============
@@ -87,7 +87,7 @@ CAPTIONS_FIRST = env("CAPTIONS_FIRST", "1") == "1"
 BRAIN_FRAMES_MAX_DURATION = float(env("BRAIN_FRAMES_MAX_DURATION", "1200"))
 
 # ============ PEMILIHAN MOMEN ============
-MAX_CLIPS = int(env("MAX_CLIPS", "6"))
+MAX_CLIPS = int(env("MAX_CLIPS", "100"))  # PLAFON pengaman saja — jumlah klip = keputusan otak AI sesuai kualitas video
 MIN_CLIP_SEC = float(env("MIN_CLIP_SEC", "15"))
 MAX_CLIP_SEC = float(env("MAX_CLIP_SEC", "90"))
 

@@ -45,7 +45,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | Fitur | Detail |
 |---|---|
 | **1 otak AI** | Gemini (gratis tier cukup). Satu-satunya layanan eksternal. |
-| **Otak TERLATIH v3** | Gemini menerima **judul + channel + transkrip + frame** → berpikir KONTEKS DULU (topik, cerita, siapa saja) → menilai dari sudut pandang penonton acak → baru memilih momen paling berdaging. Semua dalam SATU panggilan — nol langkah ekstra. |
+| **Otak ELITE v4** | Gemini (model tertinggi duluan, turun otomatis) menerima **judul + channel + transkrip + frame** → berpikir KONTEKS DULU → menilai seperti penonton acak → PILIH dengan standar editor legendaris (retensi 2 dtk, curiosity gap, trigger share/save, hanya momen score 7+). **Jumlah klip = keputusan otak sesuai kualitas video** (bukan kuota tetap). SATU panggilan — nol langkah ekstra. |
 | **Semua platform** | Apapun yang didukung yt-dlp: YouTube, TikTok, Instagram, X, Facebook, dll. URL **YouTube Kids otomatis dinormalisasi** + **deteksi video anak** (URL kids / judul khas) → otak masuk mode aman anak (momen lucu/edukatif, framing hangat). |
 | **Momen berdaging** | Prompt ketat 3-langkah terlatih: PAHAMI DULU → nilai sebagai penonton acak → konteks → membangun → pay-off. Adaptif jenis konten (podcast/gaming/storytime/edukasi/anak). Basa-basi/iklan/momen asal ditolak. |
 | **Potongan presisi** | Start/end di-snap ke timestamp kata asli (toleransi 2 dtk) + seek akurat frame-level — tak lebih, tak kurang. |
@@ -100,7 +100,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 
 **⑤ Cuplikan frame** — 1 frame tiap ±8 detik (maks `BRAIN_MAX_FRAMES`), dikecilkan ke 320px, disimpan sebagai jpg. Di-cache. Ini "mata" untuk otak. Matikan dengan `BRAIN_MULTIMODAL=0` kalau mau tercepat.
 
-**⑥ Otak TERLATIH v3 (Gemini)** — `brain.py` mengirim: (a) **konteks video: judul + channel + mode anak (deteksi otomatis)**, (b) transkrip berformat `[12.4-15.6] teks per baris`, (c) semua frame jpg dalam urutan waktu. Prompt 3-langkah terlatih: **PAHAMI DULU** (topik, siapa saja, di mana dagingnya — mis. judul "pencurian mobil" → cari bagian kisahnya diberi tahu detail) → **NILAI SEBAGAI PENONTON ACAK** (bagian mana yang bikin kaget/emosi/penasaran) → **PILIH** dengan aturan ketat: utuh & berdaging (konteks → membangun → pay-off), start tepat di kalimat yang bikin konteks langsung jelas (contoh: "John, kenapa mobilmu bisa dicuri?"), adaptif jenis konten, 15–90 dtk, anti tumpang tindih, judul + hook + score jujur. Jawaban JSON (`{analysis, moments}`) divalidasi: snap ke batas kata terdekat, clamp durasi, buang tumpang tindih, sort by score, potong ke `MAX_CLIPS`. Semua dalam SATU panggilan Gemini — waktu proses tidak berubah.
+**⑥ Otak ELITE v4 (Gemini)** — `brain.py` mengirim: (a) **konteks video: judul + channel + mode anak (deteksi otomatis)**, (b) transkrip berformat `[12.4-15.6] teks per baris`, (c) semua frame jpg dalam urutan waktu. Prompt 3-langkah terlatih: **PAHAMI DULU** (topik, siapa saja, di mana dagingnya — mis. judul "pencurian mobil" → cari bagian kisahnya diberi tahu detail) → **NILAI SEBAGAI PENONTON ACAK** (bagian mana yang bikin kaget/emosi/penasaran) → **PILIH** dengan aturan ketat: utuh & berdaging (konteks → membangun → pay-off), start tepat di kalimat yang bikin konteks langsung jelas (contoh: "John, kenapa mobilmu bisa dicuri?"), adaptif jenis konten, 15–90 dtk, anti tumpang tindih, judul + hook + score jujur. Jumlah momen FLEKSIBEL: pilih SEMUA yang layak (score 7-10) — bisa 3, bisa 30, plafon `MAX_CLIPS`=100 hanya pengaman. Jawaban JSON (`{analysis, moments}`) divalidasi: snap ke batas kata terdekat, clamp durasi, buang tumpang tindih, sort by score. Semua dalam SATU panggilan Gemini — waktu proses tidak berubah.
 
 **⑦ Render per klip (satu pass)** —
 - *Face tracking* (`facetrack.py`): YuNet mendeteksi **semua** wajah + landmark mulut tiap 1 dtk **hanya di area klip**. Wajah dipairing antar frame jadi track; "siapa bicara" dinilai dari variance gerakan sudut mulut; pilihan fokus diberi **hysteresis** (anti flip-flop). Transisi antar pembicara = **S-curve smoothstep (C1 di kedua ujung)** yang ditanam sebelum smoothing + antisipasi lag deteksi → kamera tiba ~tepat saat pembicara baru mulai bicara, tanpa teleport dan tanpa meninggalkan pembicara lama kepotong setengah wajah. Path dipolish: EMA zero-phase ringan + clamp kecepatan; render pakai **interpolasi kubik Catmull-Rom** (kecepatan kontinu di tiap titik — interpolasi linear membuat kecepatan melompat di tiap keyframe, terlihat sebagai pan 'macet-macet kecil').
@@ -217,7 +217,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | Setting | Default | Keterangan |
 |---|---|---|
 | `GEMINI_API_KEY` | — | **WAJIB**. Gratis di aistudio.google.com/apikey |
-| `GEMINI_MODEL` | gemini-2.0-flash | Model otak |
+| `GEMINI_MODEL` | gemini-3.1-pro-preview | Model otak — tertinggi duluan; kalau bermasalah otomatis turun ke `GEMINI_FALLBACK_MODELS` (urutan dari yang paling tinggi) |
 | `WHISPER_MODEL` | small | tiny/base lebih cepat, medium lebih akurat |
 | `WHISPER_BEAM` | 1 | Beam search — 1 = tercepat (ketepatan waktu kata tetap, dari alignmen audio); 5 = anti-typo maksimal |
 | `WHISPER_COMPUTE` | int8 | Paling ringan di CPU |
@@ -228,7 +228,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 ### Pemilihan momen
 | Setting | Default | Keterangan |
 |---|---|---|
-| `MAX_CLIPS` | 6 | Maks klip per video. Kurangi biar selesai cepat |
+| `MAX_CLIPS` | 100 | Plafon pengaman saja — jumlah klip ditentukan otak AI sesuai kualitas video |
 | `MIN_CLIP_SEC` | 15 | Durasi klip minimum |
 | `MAX_CLIP_SEC` | 90 | Durasi klip maksimum |
 
@@ -283,7 +283,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 
 **Subtitle masih typo pada pembicara cepat/audio berisik** — naikkan `WHISPER_BEAM=5` dan coba `WHISPER_MODEL=medium` kalau PC kuat. Default 1 = tercepat; kualitas waktu kata tidak terpengaruh beam. Pipeline sudah memakai anti-drift (`condition_on_previous_text=False`) + VAD.
 
-**Gemini error 429** — free tier kena limit; tunggu sebentar atau ganti `GEMINI_MODEL`.
+**Gemini error 429** — free tier kena limit; tunggu sebentar — rantai fallback otomatis turun ke model berikutnya, atau ganti `GEMINI_MODEL`.
 
 **Hasil tracking kaku di video X** — turunkan `FACE_SAMPLE_INTERVAL` ke 0.5 dan ceritakan detik mana yang bermasalah (masalah spesifik lebih mudah diperbaiki daripada kesan umum).
 
