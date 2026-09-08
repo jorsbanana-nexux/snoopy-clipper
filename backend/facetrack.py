@@ -1,16 +1,24 @@
 """
-Face tracking v2 — MULUS, pinter, anti-kaku. Kunci utamanya: ini OFFLINE
-(kita tahu seluruh timeline SEBELUM render), jadi kamera tidak pernah telat.
+Face tracking v3 — PEMBICARA AKTIF, dukungan 2..10+ orang, mulus tanpa kacau.
+Kunci utamanya: ini OFFLINE (kita tahu seluruh timeline SEBELUM render),
+jadi kamera tidak pernah telat — dan fokusnya adalah PEMBICARA AKTIF.
 
 Cara kerja:
 1. Deteksi SEMUA wajah + landmark mulut (YuNet) tiap FACE_SAMPLE_INTERVAL detik.
-2. Wajah di-track antar sampel (matching jarak terdekat).
-3. "Siapa yang bicara" dinilai dari gerakan sudut mulut (variance window) —
-   ringan, tanpa model diarization berat. Pembicara aktif = mulutnya bergerak.
-4. HYSTERESIS: dua orang sama aktif -> fokus tidak lompat-lompat.
-5. LOOK-AHEAD: pan ke pembicara berikutnya dimulai LEAD_AHEAD_SEC detik
-   SEBELUM dia bicara / muncul di layar — kamera sudah menyorot duluan.
-6. Smoothing zero-phase (EMA maju-mundur) + clamp kecepatan ->
+2. Wajah di-track antar sampel — matching JARAK GLOBAL (semua pasangan
+   diurut dari terdekat), jadi identitas terjaga walau banyak wajah rapat.
+3. "Siapa yang bicara" dinilai dari gerakan mulut (variance window +-2).
+4. SEGMENT BICARA: skor sesaat dihimpun jadi segmen berkelanjutan.
+   Ganti fokus HANYA jika pembicara baru MENAHAN bicara >= SPEAKER_SWITCH_SEC
+   -> balasan singkat "oke"/"ya" (backchannel) DIABAIKAN, kamera tenang.
+5. SEREMPAK: dua+ orang bicara bersamaan -> pindah hanya kalau JELAS lebih
+   dominan (SPEAKER_DOMINANCE x) -> tidak ada flip-flop kamera.
+6. Pembicara aktif hilang dari frame -> serahkan mulus ke pembicara aktif
+   lain / wajah dominan yang terlihat. Tidak ada yang bicara -> wajah
+   dominan (terbesar & paling terlihat), bukan loncat acak.
+7. LOOK-AHEAD: transisi S-curve (C1) ke pembicara berikutnya dimulai
+   LEAD_AHEAD_SEC detik sebelum flip — kamera menyorot duluan.
+8. Smoothing zero-phase (EMA maju-mundur) + clamp kecepatan ->
    tidak teleport, tidak overshoot, tidak kaku.
 """
 import urllib.request
@@ -132,28 +140,32 @@ def _vision_summary(samples: list) -> dict:
 # ---------------- tracking & fokus ----------------
 
 def _build_tracks(samples: list, src_w: int) -> list:
-    """Matching jarak terdekat antar sampel -> track wajah yang konsisten."""
+    """Matching antar sampel -> track wajah konsisten. Semua pasangan
+    (wajah x track) diurut dari jarak TERDEKAT dulu -> identitas terjaga
+    walau 10 wajah bergerak rapat (greedy per-wajah bisa salah pasang)."""
     max_jump = src_w * 0.25
     tracks = []
     for si, s in enumerate(samples):
-        used = set()
-        for f in s["faces"]:
-            best, bd = None, 1e18
+        pairs = []
+        for fi, f in enumerate(s["faces"]):
             for ti, tr in enumerate(tracks):
-                if ti in used:
-                    continue
                 last_si, last_f = tr["points"][-1]
                 if si - last_si > 3:  # track sudah lama hilang -> dianggap mati
                     continue
                 d = abs(f["cx"] - last_f["cx"]) + abs(f["cy"] - last_f["cy"]) * src_w
-                if d < bd and d < max_jump:
-                    bd, best = d, ti
-            if best is None:
-                tracks.append({"points": [(si, f)], "speak": {}})
-                used.add(len(tracks) - 1)
-            else:
-                tracks[best]["points"].append((si, f))
-                used.add(best)
+                if d < max_jump:
+                    pairs.append((d, fi, ti))
+        pairs.sort()
+        used_f, used_t = set(), set()
+        for d, fi, ti in pairs:
+            if fi in used_f or ti in used_t:
+                continue
+            tracks[ti]["points"].append((si, s["faces"][fi]))
+            used_f.add(fi)
+            used_t.add(ti)
+        for fi in range(len(s["faces"])):  # wajah baru masuk frame
+            if fi not in used_f:
+                tracks.append({"points": [(si, s["faces"][fi])], "speak": {}})
     min_pts = max(2, int(len(samples) * 0.08))
     return [t for t in tracks if len(t["points"]) >= min_pts]
 
@@ -174,27 +186,111 @@ def _speaking_score(track: dict):
         track["speak"][si] = var / (mean * mean + 1e-6)
 
 
+def _segments_of(track: dict, n: int, th: float) -> list:
+    """Himpun skor mulut sesaat jadi SEGMENT bicara berkelanjutan [(s0, s1)]."""
+    segs, s = [], None
+    for si in range(n):
+        if track["speak"].get(si, 0.0) >= th:
+            if s is None:
+                s = si
+        elif s is not None:
+            segs.append((s, si - 1))
+            s = None
+    if s is not None:
+        segs.append((s, n - 1))
+    return segs
+
+
+def _active_at(track: dict, si: int) -> tuple:
+    """Segment bicara yang menutupi si (None kalau sedang diam)."""
+    for seg in track["_segs"]:
+        if seg[0] <= si <= seg[1]:
+            return seg
+    return None
+
+
+def _recently_active(track: dict, si: int) -> bool:
+    """Aktif pada si atau si-1 — meredam kedip sesaat antar kata."""
+    return _active_at(track, si) is not None or (si > 0 and _active_at(track, si - 1) is not None)
+
+
+def _visible_at(track: dict, si: int, back: int = 2) -> bool:
+    """Track masih terlihat di sekitar si (ada titik deteksi)."""
+    return any(abs(s - si) <= back for s, _ in track["points"])
+
+
+def _dominant_visible(tracks: list, si: int):
+    """Wajah paling besar yang TERLIHAT saat si (dominan nyata, bukan acak)."""
+    best, best_sc = None, -1.0
+    for ti, tr in enumerate(tracks):
+        if not _visible_at(tr, si):
+            continue
+        sc = max((f["fw"] for s, f in tr["points"] if abs(s - si) <= 2), default=0.0)
+        if sc > best_sc:
+            best_sc, best = sc, ti
+    return best
+
+
 def _focus_timeline(tracks: list, n: int) -> list:
-    """Pilih track fokus per sampel: paling 'bicara' + hysteresis anti flip-flop."""
+    """FOKUS = PEMBICARA AKTIF — mendukung jumlah orang berapa pun (2, 3, 10+).
+
+    - Ganti fokus HANYA kalau pembicara baru MENAHAN bicara
+      >= SPEAKER_SWITCH_SEC ("oke"/"ya" singkat = backchannel -> diabaikan).
+    - Bicara serempak: pindah hanya kalau JELAS lebih dominan
+      (SPEAKER_DOMINANCE x) -> kamera tidak flip-flop.
+    - Giliran bicara sungguhan (pembicara lama berhenti & baru menahan) ->
+      pindah LANGSUNG, mulus lewat look-ahead.
+    - Pembicara hilang dari frame -> serahkan ke pembicara aktif lain,
+      kalau tidak ada -> wajah dominan yang terlihat.
+    - Tidak ada yang bicara sepanjang klip -> wajah dominan paling besar.
+    """
+    import math
+    th = config.SPEAKER_MIN_ACTIVITY
+    # minimal 3 sampel: window skor mulut melebar +-2 sampel, jadi interjeksi
+    # singkat "oke"/"ya" bisa menghasilkan segmen 4-5 sampel palsu — konfirmasi
+    # 3 sampel berkelanjutan menyaringnya (giliran sungguhan tetap gesit).
+    switch_n = max(3, math.ceil(config.SPEAKER_SWITCH_SEC / config.FACE_SAMPLE_INTERVAL))
+    dom_ratio = max(1.05, config.SPEAKER_DOMINANCE)
+    for tr in tracks:
+        tr["_segs"] = _segments_of(tr, n, th)
     focus = []
     cur = None
     for si in range(n):
-        cands = [(tr["speak"].get(si, 0.0), ti)
-                 for ti, tr in enumerate(tracks) if tr["speak"].get(si, 0.0) > 0]
-        if cands:
-            cands.sort(reverse=True)
-            best_sc, best_ti = cands[0]
-            if cur is None:
-                cur = best_ti
-            elif best_ti != cur:
-                cur_sc = tracks[cur]["speak"].get(si, 0.0)
-                # pindah hanya kalau jauh lebih aktif (hysteresis 1.6x)
-                if best_sc > max(cur_sc * 1.6, 0.004):
-                    cur = best_ti
+        # kandidat: track yang SEDANG menahan bicara cukup lama
+        cands = []
+        for ti, tr in enumerate(tracks):
+            seg = _active_at(tr, si)
+            if seg and si - seg[0] + 1 >= switch_n:
+                cands.append((tr["speak"].get(si, 0.0), ti))
+        # skor tertinggi dulu; seri -> track paling dulu mapan (deterministik,
+        # tidak loncat acak saat banyak orang bicara serempak sama rata)
+        cands.sort(key=lambda c: (c[0], -c[1]), reverse=True)
+        if cur is None:
+            if cands:
+                cur = cands[0][1]  # pembicara pertama yang menahan bicara
+        elif cands and cands[0][1] != cur:
+            b_sc, b_ti = cands[0]
+            if not _recently_active(tracks[cur], si):
+                cur = b_ti  # giliran bicara pindah: pembicara lama sudah diam
+            elif b_sc > tracks[cur]["speak"].get(si, 0.0) * dom_ratio:
+                cur = b_ti  # serempak: hanya kalau jelas lebih dominan
+        # pembicara aktif hilang dari frame & tidak ada kandidat menahan
+        if cur is not None and not _visible_at(tracks[cur], si) and not cands:
+            nxt = _dominant_visible(tracks, si)
+            if nxt is not None and nxt != cur:
+                cur = nxt
         focus.append(cur)
-    # fallback: tidak ada yang terdeteksi 'bicara' -> track paling dominan
+    # backfill awal: sebelum pembicara pertama menahan bicara, kamera SUDAH
+    # siap menyorot dia sejak awal (offline — kita tahu masa depan timeline)
+    for i, x in enumerate(focus):
+        if x is not None:
+            for j in range(i):
+                focus[j] = x
+            break
+    # fallback: tidak ada yang bicara sepanjang klip -> wajah dominan
     if all(f is None for f in focus) and tracks:
-        dom = max(range(len(tracks)), key=lambda ti: len(tracks[ti]["points"]))
+        dom = max(range(len(tracks)),
+                  key=lambda ti: sum(f["fw"] for _, f in tracks[ti]["points"]))
         focus = [dom] * n
     return focus
 

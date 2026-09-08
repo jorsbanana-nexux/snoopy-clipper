@@ -131,7 +131,15 @@ WARM_HUE_DEG = float(env("WARM_HUE_DEG", "2.0"))
 # BGM wajib selalu ada; intensitas kecil & nyaman. Kredit otomatis -> meta.json.
 BGM = env("BGM", "1").lower() in ("1", "true", "on")
 BGM_VOLUME = float(env("BGM_VOLUME", "0.15"))  # 15% dari suara utama
-BGM_DIR = BASE_DIR / "bgm"        # rotasi hue hangat (derajat) -> rona
+BGM_DIR = BASE_DIR / "bgm"
+
+# ============ PEMBICARA AKTIF (dukungan 2..10+ orang, anti kacau) ============
+# Ganti fokus hanya kalau pembicara baru MENAHAN bicara >= SPEAKER_SWITCH_SEC
+# (balasan singkat "oke"/"ya"/anggukan < ini = backchannel -> DIABAIKAN).
+# Bicara serempak: pindah hanya kalau JELAS lebih dominan (SPEAKER_DOMINANCE x).
+SPEAKER_SWITCH_SEC = float(env("SPEAKER_SWITCH_SEC", "1.5"))
+SPEAKER_DOMINANCE = float(env("SPEAKER_DOMINANCE", "1.4"))
+SPEAKER_MIN_ACTIVITY = float(env("SPEAKER_MIN_ACTIVITY", "0.0035"))  # ambang mulut aktif        # rotasi hue hangat (derajat) -> rona
 # kemerahan kulit ala subsurface scattering; filter hue = paling murah (ovh ~5%)
 
 # OTAK MULTIMODAL: kirim cuplikan frame ke Gemini supaya bisa "melihat" video

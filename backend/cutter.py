@@ -240,13 +240,18 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
         vol = float(bgm.get("volume", 0.15))
         fin = min(0.8, clip_dur / 4)
         fout_d = min(1.2, clip_dur / 4)
+        # apad + duration=longest: suara sumber bisa LEBIH PENDEK dari video
+        # (potongan rentang keyframe: video punya padding beberapa detik)
+        # -> tanpa ini audio & BGM mati mendadak di ekor klip. apad menjamin
+        # audio berbunyi sampai akhir klip persis sepanjang video.
         a_complex = (
             f"[0:v]{vf}[v];"
+            f"[0:a]apad[a0];"
             f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
             f"volume={vol:.3f},"
             f"afade=t=in:st=0:d={fin:.3f},"
             f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm];"
-            f"[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+            f"[a0][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]"
         )
         cmd = [
             "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
@@ -262,6 +267,7 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
             "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
             "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
             "-vf", vf, *enc,
+            "-af", "apad",  # audio selalu sepanjang video — ekor klip tak pernah sunyi
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
             "-progress", "pipe:1", str(out_path),
         ]
