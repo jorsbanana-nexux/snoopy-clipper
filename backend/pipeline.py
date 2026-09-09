@@ -370,8 +370,18 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                     message=f"Klip {i + 1}/{total}: {m['title']}",
                     eta_seconds=sum(render_est[i:]))
             start, end = m["start"], m["end"]
-            # fase senyap diberi pesan agar UI tidak tampak 'diam'
             _update(job_id, step="render", pct=base_pct + int(span * 0.2),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+
+            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.2 + 0.35 * frac))),
+                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+
+            words = _clip_words(job_id, info, m, i, full_words,
+                                absolute_shift=None if full_words else start,
+                                on_progress=word_prog, clip_dur=end - start)
+            # fase senyap diberi pesan agar UI tidak tampak 'diam'
+            _update(job_id, step="render", pct=base_pct + int(span * 0.55),
                     message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
             times = []
             t = max(0.0, start - 0.5)
@@ -379,17 +389,11 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                 times.append(round(t, 2))
                 t += config.FACE_SAMPLE_INTERVAL
             # t0=start: keyframe digeser ke waktu LOKAL (ffmpeg -ss reset t ke 0)
-            keyframes, focus_y, vision = facetrack.track(video_path, times, src_w, cw, t0=start)
-            _update(job_id, step="render", pct=base_pct + int(span * 0.35),
-                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
-
-            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
-                _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
-                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
-
-            words = _clip_words(job_id, info, m, i, full_words,
-                                absolute_shift=None if full_words else start,
-                                on_progress=word_prog, clip_dur=end - start)
+            # word_spans (Whisper): gerak mulut dihitung 'bicara' hanya saat ada
+            # ucapan nyata — orang yang ketawa/nyengir saat jeda tak mencuri kamera
+            spans = [(w["start"], w["end"]) for w in words] if words else None
+            keyframes, focus_y, vision = facetrack.track(video_path, times, src_w, cw,
+                                                         t0=start, word_spans=spans)
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
@@ -487,26 +491,28 @@ def _render_ranged(job_id, info, moments, full_words):
             cw, ch = cutter.crop_size(src_w, src_h)
             tw, th = cutter.pick_target(src_w, src_h)
 
-            # face tracking di timeline SEGMEN (lokal) — fase senyap diberi pesan
+            # kata-per-kata di timeline lokal: slice whisper full (digeser) atau whisper segmen
             _update(job_id, step="render", pct=base_pct + int(span * 0.25),
+                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
+
+            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
+                _update(job_id, pct=min(99, base_pct + int(span * (0.25 + 0.35 * frac))),
+                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
+
+            words = _clip_words_local(info, m, i, seg_path, full_words,
+                                      on_progress=word_prog, seg_dur=seg_dur)
+            # face tracking di timeline SEGMEN (lokal) — sadar ucapan (Whisper):
+            # mulut bergerak saat JEDA = ketawa/nyengir, bukan pembicara
+            _update(job_id, step="render", pct=base_pct + int(span * 0.6),
                     message=f"Klip {i + 1}/{total}: {m['title']} — analisis wajah & kamera…")
             times = []
             t = 0.0
             while t <= seg_dur + 0.5:
                 times.append(round(t, 2))
                 t += config.FACE_SAMPLE_INTERVAL
-            keyframes, focus_y, vision = facetrack.track(seg_path, times, src_w, cw, t0=0.0)
-
-            # kata-per-kata di timeline lokal: slice whisper full (digeser) atau whisper segmen
-            _update(job_id, step="render", pct=base_pct + int(span * 0.35),
-                    message=f"Klip {i + 1}/{total}: {m['title']} — subtitle kata-per-kata…")
-
-            def word_prog(frac, i=i, base_pct=base_pct, span=span, m=m, total=total):
-                _update(job_id, pct=min(99, base_pct + int(span * (0.35 + 0.55 * frac))),
-                        message=f"Klip {i + 1}/{total}: {m['title']} — subtitle {int(frac * 100)}%")
-
-            words = _clip_words_local(info, m, i, seg_path, full_words,
-                                      on_progress=word_prog, seg_dur=seg_dur)
+            spans = [(w["start"], w["end"]) for w in words] if words else None
+            keyframes, focus_y, vision = facetrack.track(seg_path, times, src_w, cw,
+                                                          t0=0.0, word_spans=spans)
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
@@ -615,6 +621,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
     return {
         "id": clip_id, "title": m["title"], "hook": m.get("hook", ""),
         "score": m.get("score", 0), "reason": m.get("reason", ""),
+        "trend": m.get("trend", ""), "audience": m.get("audience", ""),
         "bgm": bgm_credit,
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),

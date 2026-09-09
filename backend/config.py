@@ -95,7 +95,7 @@ MIN_CLIP_SEC = float(env("MIN_CLIP_SEC", "15"))
 MAX_CLIP_SEC = float(env("MAX_CLIP_SEC", "90"))
 
 # ============ SPEED (low-spec friendly) ============
-FACE_SAMPLE_INTERVAL = float(env("FACE_SAMPLE_INTERVAL", "1.0"))  # detik antar sampel wajah
+FACE_SAMPLE_INTERVAL = float(env("FACE_SAMPLE_INTERVAL", "0.5"))  # detik antar sampel wajah (0.5 = reaksi kamera 2x lebih gesit, tetap ringan)
 LEAD_AHEAD_SEC = float(env("LEAD_AHEAD_SEC", "2.0"))  # kamera mulai menyorot 2 dtk SEBELUM ganti pembicara
 
 # MOTION BLUR ala game kelas atas: aktif HANYA saat kamera pan (bukan selalu),
@@ -142,7 +142,8 @@ BGM_DIR = BASE_DIR / "bgm"
 # Bicara serempak: pindah hanya kalau JELAS lebih dominan (SPEAKER_DOMINANCE x).
 SPEAKER_SWITCH_SEC = float(env("SPEAKER_SWITCH_SEC", "1.5"))
 SPEAKER_DOMINANCE = float(env("SPEAKER_DOMINANCE", "1.4"))
-SPEAKER_MIN_ACTIVITY = float(env("SPEAKER_MIN_ACTIVITY", "0.0035"))  # ambang mulut aktif        # rotasi hue hangat (derajat) -> rona
+SPEAKER_MIN_ACTIVITY = float(env("SPEAKER_MIN_ACTIVITY", "0.0035"))  # ambang mulut aktif
+SPEAKER_HOLD_SEC = float(env("SPEAKER_HOLD_SEC", "2.0"))  # tenang minimal sesudah pindah fokus (serempak tak flip-flop)        # rotasi hue hangat (derajat) -> rona
 # kemerahan kulit ala subsurface scattering; filter hue = paling murah (ovh ~5%)
 
 # OTAK MULTIMODAL: kirim cuplikan frame ke Gemini supaya bisa "melihat" video

@@ -45,6 +45,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | Fitur | Detail |
 |---|---|
 | **1 otak AI** | Gemini (gratis tier cukup). Satu-satunya layanan eksternal. |
+| **Pembicara aktif v4 — kelas profesional (1..10+ orang)** | Kamera sadar UCAPAN: gerak mulut dihitung bicara hanya saat Whisper mendengar ucapan (ketawa/nyengir saat jeda tak pernah mencuri kamera). Identitas wajah dijaga matching velocity (aman saat 10 orang bersilangan jalan). Dominasi dinilai dari rata-rata segmen + tenang minimal 2 dtk setelah pindah — tanpa flip-flop. Sampling 0.5 dtk: reaksi 2× lebih gesit. Margin wajah anti "setengah badan". |
 | **Pembicara aktif (2..10+ orang)** | Kamera fokus ke PEMBICARA AKTIF: ganti fokus hanya saat pembicara baru menahan bicara ≥1,5 dtk (balasan singkat "oke"/"ya" diabaikan), bicara serempak hanya pindah kalau jelas lebih dominan (1,4×) — kamera tenang & mulus, tidak flip-flop. Matching wajah global-jarak menjaga identitas walau banyak wajah rapat. Pembicara hilang dari frame → serahkan mulus ke wajah dominan. |
 | **BGM viral otomatis** | Otak menentukan mood tiap klip (comedy/upbeat/epic/tension/mystery/emotional/chill/action) di panggilan yang sama → BGM profesional Kevin MacLeod (CC BY 4.0) dicampur volume rendah 15% + fade halus. Track diunduh SEKALI lalu cache permanen (mono ~0.5-1.5MB) — nol unduhan per klip. **BGM wajib selalu ada**, tidak pernah kosong. Kredit tersimpan otomatis (meta.json + `description.txt`). |
 | **Otak ELITE v4** | Gemini (model tertinggi duluan, turun otomatis) menerima **judul + channel + transkrip + frame** → berpikir KONTEKS DULU → menilai seperti penonton acak → PILIH dengan standar editor legendaris (retensi 2 dtk, curiosity gap, trigger share/save, hanya momen score 7+). **Jumlah klip = keputusan otak sesuai kualitas video** (bukan kuota tetap). SATU panggilan — nol langkah ekstra. |
@@ -252,6 +253,7 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | `BGM_VOLUME` | 0.15 | Intensitas BGM (15% dari suara utama — kecil & nyaman) |
 | `SPEAKER_SWITCH_SEC` | 1.5 | Lama menahan bicara sebelum pembicara baru boleh merebut fokus (interjeksi singkat diabaikan) |
 | `SPEAKER_DOMINANCE` | 1.4 | Rasio dominasi saat dua+ orang bicara serempak (anti flip-flop) |
+| `SPEAKER_HOLD_SEC` | 2.0 | Tenang minimal sesudah pindah fokus (serempak tidak flip-flop) |
 | `UNSHARP_AMOUNT` | 0.45 | Ketajaman tekstur (0 = off) |
 | `EQ_CONTRAST` / `EQ_GAMMA` / `EQ_SATURATION` | 1.06 / 0.94 / 1.12 | Bayangan pekat + warna hidup |
 | `WARM_HUE_DEG` | 2.0 | Rona kulit hangat (derajat) |

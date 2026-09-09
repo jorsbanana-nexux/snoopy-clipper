@@ -1,25 +1,26 @@
 """
-Face tracking v3 — PEMBICARA AKTIF, dukungan 2..10+ orang, mulus tanpa kacau.
-Kunci utamanya: ini OFFLINE (kita tahu seluruh timeline SEBELUM render),
-jadi kamera tidak pernah telat — dan fokusnya adalah PEMBICARA AKTIF.
+Face tracking v4 — KELAS PROFESIONAL, 1..10+ orang, "ratusan mulus".
+Kunci: OFFLINE (seluruh timeline diketahui sebelum render) + dua sumber
+bukti silang: gerak mulut (vision) & ucapan nyata (Whisper).
 
 Cara kerja:
-1. Deteksi SEMUA wajah + landmark mulut (YuNet) tiap FACE_SAMPLE_INTERVAL detik.
-2. Wajah di-track antar sampel — matching JARAK GLOBAL (semua pasangan
-   diurut dari terdekat), jadi identitas terjaga walau banyak wajah rapat.
-3. "Siapa yang bicara" dinilai dari gerakan mulut (variance window +-2).
-4. SEGMENT BICARA: skor sesaat dihimpun jadi segmen berkelanjutan.
-   Ganti fokus HANYA jika pembicara baru MENAHAN bicara >= SPEAKER_SWITCH_SEC
-   -> balasan singkat "oke"/"ya" (backchannel) DIABAIKAN, kamera tenang.
-5. SEREMPAK: dua+ orang bicara bersamaan -> pindah hanya kalau JELAS lebih
-   dominan (SPEAKER_DOMINANCE x) -> tidak ada flip-flop kamera.
-6. Pembicara aktif hilang dari frame -> serahkan mulus ke pembicara aktif
-   lain / wajah dominan yang terlihat. Tidak ada yang bicara -> wajah
-   dominan (terbesar & paling terlihat), bukan loncat acak.
-7. LOOK-AHEAD: transisi S-curve (C1) ke pembicara berikutnya dimulai
-   LEAD_AHEAD_SEC detik sebelum flip — kamera menyorot duluan.
-8. Smoothing zero-phase (EMA maju-mundur) + clamp kecepatan ->
-   tidak teleport, tidak overshoot, tidak kaku.
+1. Sampling SEMUA wajah + landmark mulut (YuNet) tiap FACE_SAMPLE_INTERVAL
+   detik (default 0.5 — reaksi kamera 2x lebih gesit, tetap ringan).
+2. Matching antar sampel: JARAK GLOBAL + PREDIKSI KECEPATAN (velocity) —
+   identitas wajah terjaga walau 10 orang bergerak & BERSILANGAN jalan.
+3. GERBANG UCAPAN (Whisper): gerak mulut hanya dihitung sebagai 'bicara'
+   kalau saat itu memang ADA ucapan. Orang yang KETAWA/nyengir/angguk
+   saat pembicara utama jeda = bukan pembicara — kamera tak tertipu.
+4. PEMBICARA AKTIF: ganti fokus hanya saat menahan bicara >= SPEAKER_SWITCH_SEC
+   ("oke"/"ya" singkat diabaikan). Serempak: hanya kalau jelas dominan
+   (rata-rata segmen, bukan sesaat) + TENANG minimal SPEAKER_HOLD_SEC
+   setelah pindah — tak ada flip-flop.
+5. Pembicara hilang dari frame -> serahkan mulus ke pembicara aktif lain /
+   wajah dominan yang terlihat. Semua diam -> wajah terbesar.
+6. MARGIN WAJAH: kamera menjaga wajah fokus tak terpotong tepi frame
+   (anti 'setengah badan/wajah').
+7. LOOK-AHEAD transisi S-curve (C1) + EMA zero-phase + clamp kecepatan —
+   mulus menyorot, mulus mengganti, tanpa teleport/overshoot/kaku.
 """
 import urllib.request
 
@@ -141,8 +142,9 @@ def _vision_summary(samples: list) -> dict:
 
 def _build_tracks(samples: list, src_w: int) -> list:
     """Matching antar sampel -> track wajah konsisten. Semua pasangan
-    (wajah x track) diurut dari jarak TERDEKAT dulu -> identitas terjaga
-    walau 10 wajah bergerak rapat (greedy per-wajah bisa salah pasang)."""
+    (wajah x track) diurut dari jarak TERDEKAT dulu, dan jarak dihitung ke
+    POSISI PREDIKSI (velocity dari 2 titik terakhir) -> identitas terjaga
+    walau 10 wajah bergerak rapat dan BERSILANGAN jalan."""
     max_jump = src_w * 0.25
     tracks = []
     for si, s in enumerate(samples):
@@ -150,9 +152,17 @@ def _build_tracks(samples: list, src_w: int) -> list:
         for fi, f in enumerate(s["faces"]):
             for ti, tr in enumerate(tracks):
                 last_si, last_f = tr["points"][-1]
-                if si - last_si > 3:  # track sudah lama hilang -> dianggap mati
+                gap = si - last_si
+                if gap > 3:  # track sudah lama hilang -> dianggap mati
                     continue
-                d = abs(f["cx"] - last_f["cx"]) + abs(f["cy"] - last_f["cy"]) * src_w
+                if len(tr["points"]) >= 2:  # prediksi velocity utk orang bergerak
+                    p_si, p_f = tr["points"][-2]
+                    gs = max(1, last_si - p_si)
+                    px = last_f["cx"] + (last_f["cx"] - p_f["cx"]) / gs * gap
+                    py = last_f["cy"] + (last_f["cy"] - p_f["cy"]) / gs * gap
+                else:
+                    px, py = last_f["cx"], last_f["cy"]
+                d = abs(f["cx"] - px) + abs(f["cy"] - py) * src_w
                 if d < max_jump:
                     pairs.append((d, fi, ti))
         pairs.sort()
@@ -186,11 +196,17 @@ def _speaking_score(track: dict):
         track["speak"][si] = var / (mean * mean + 1e-6)
 
 
-def _segments_of(track: dict, n: int, th: float) -> list:
+def _in_speech(t: float, spans, pad: float = 0.35) -> bool:
+    """Ada ucapan (Whisper) pada waktu t (toleransi pad detik)."""
+    return any(s - pad <= t <= e + pad for s, e in spans)
+
+
+def _segments_of(track: dict, n: int, th: float, scores=None) -> list:
     """Himpun skor mulut sesaat jadi SEGMENT bicara berkelanjutan [(s0, s1)]."""
+    scores = scores or track["speak"]
     segs, s = [], None
     for si in range(n):
-        if track["speak"].get(si, 0.0) >= th:
+        if scores.get(si, 0.0) >= th:
             if s is None:
                 s = si
         elif s is not None:
@@ -199,6 +215,16 @@ def _segments_of(track: dict, n: int, th: float) -> list:
     if s is not None:
         segs.append((s, n - 1))
     return segs
+
+
+def _seg_mean(track: dict, seg) -> float:
+    """Rata-rata skor efektif sebuah segmen — dominasi dinilai dari rata-rata,
+    bukan sesaat (noise sesaat tak bisa mencuri kamera)."""
+    if not seg:
+        return 0.0
+    eff = track.get("_eff") or track["speak"]
+    vals = [eff.get(si, 0.0) for si in range(seg[0], seg[1] + 1)]
+    return sum(vals) / max(1, len(vals))
 
 
 def _active_at(track: dict, si: int) -> tuple:
@@ -231,7 +257,7 @@ def _dominant_visible(tracks: list, si: int):
     return best
 
 
-def _focus_timeline(tracks: list, n: int) -> list:
+def _focus_timeline(tracks: list, n: int, times=None, word_spans=None) -> list:
     """FOKUS = PEMBICARA AKTIF — mendukung jumlah orang berapa pun (2, 3, 10+).
 
     - Ganti fokus HANYA kalau pembicara baru MENAHAN bicara
@@ -249,36 +275,57 @@ def _focus_timeline(tracks: list, n: int) -> list:
     # minimal 3 sampel: window skor mulut melebar +-2 sampel, jadi interjeksi
     # singkat "oke"/"ya" bisa menghasilkan segmen 4-5 sampel palsu — konfirmasi
     # 3 sampel berkelanjutan menyaringnya (giliran sungguhan tetap gesit).
-    switch_n = max(3, math.ceil(config.SPEAKER_SWITCH_SEC / config.FACE_SAMPLE_INTERVAL))
+    interval = config.FACE_SAMPLE_INTERVAL
+    switch_n = max(3, math.ceil(config.SPEAKER_SWITCH_SEC / interval))
     dom_ratio = max(1.05, config.SPEAKER_DOMINANCE)
+    hold_n = max(1, math.ceil(config.SPEAKER_HOLD_SEC / interval))
+    use_gate = word_spans is not None and times is not None
     for tr in tracks:
-        tr["_segs"] = _segments_of(tr, n, th)
+        # GERBANG UCAPAN: mulut bergerak dihitung 'bicara' HANYA kalau saat itu
+        # ada ucapan nyata (Whisper). Ketawa/nyengir/angguk saat jeda tidak
+        # pernah dicatat bicara — kamera tak tertipu.
+        eff = {}
+        for si in range(n):
+            sc = tr["speak"].get(si, 0.0)
+            if use_gate and not _in_speech(times[min(si, len(times) - 1)], word_spans):
+                sc = 0.0
+            eff[si] = sc
+        tr["_eff"] = eff
+        tr["_segs"] = _segments_of(tr, n, th, scores=eff)
     focus = []
     cur = None
+    last_switch_si = -10 ** 9
     for si in range(n):
         # kandidat: track yang SEDANG menahan bicara cukup lama
         cands = []
         for ti, tr in enumerate(tracks):
             seg = _active_at(tr, si)
             if seg and si - seg[0] + 1 >= switch_n:
-                cands.append((tr["speak"].get(si, 0.0), ti))
+                cands.append((_seg_mean(tr, seg), ti))
         # skor tertinggi dulu; seri -> track paling dulu mapan (deterministik,
         # tidak loncat acak saat banyak orang bicara serempak sama rata)
         cands.sort(key=lambda c: (c[0], -c[1]), reverse=True)
         if cur is None:
             if cands:
                 cur = cands[0][1]  # pembicara pertama yang menahan bicara
+                last_switch_si = si
         elif cands and cands[0][1] != cur:
-            b_sc, b_ti = cands[0]
+            b_mean, b_ti = cands[0]
             if not _recently_active(tracks[cur], si):
                 cur = b_ti  # giliran bicara pindah: pembicara lama sudah diam
-            elif b_sc > tracks[cur]["speak"].get(si, 0.0) * dom_ratio:
-                cur = b_ti  # serempak: hanya kalau jelas lebih dominan
+                last_switch_si = si
+            elif b_mean > _seg_mean(tracks[cur], _active_at(tracks[cur], si)) * dom_ratio:
+                # serempak: hanya kalau jelas dominan (rata-rata segmen) DAN
+                # sudah tenang cukup lama sejak pindah terakhir (anti flip-flop)
+                if si - last_switch_si >= hold_n:
+                    cur = b_ti
+                    last_switch_si = si
         # pembicara aktif hilang dari frame & tidak ada kandidat menahan
         if cur is not None and not _visible_at(tracks[cur], si) and not cands:
             nxt = _dominant_visible(tracks, si)
             if nxt is not None and nxt != cur:
                 cur = nxt
+                last_switch_si = si
         focus.append(cur)
     # backfill awal: sebelum pembicara pertama menahan bicara, kamera SUDAH
     # siap menyorot dia sejak awal (offline — kita tahu masa depan timeline)
@@ -430,7 +477,8 @@ def _keyframes(times, xs, src_w, crop_w) -> list:
     return kf
 
 
-def track(video_path, times: list, src_w: int, crop_w: int, t0: float = 0.0):
+def track(video_path, times: list, src_w: int, crop_w: int, t0: float = 0.0,
+          word_spans=None):
     """
     Satu pintu face tracking: sampel -> track -> fokus -> path mulus.
     -> (keyframes [(t, center_x_px)], focus_y [(t, cy_frac)], vision dict)
@@ -446,10 +494,20 @@ def track(video_path, times: list, src_w: int, crop_w: int, t0: float = 0.0):
         return [], [], vision  # (bug lama: 2 nilai -> ValueError saat unpack)
     for tr in tracks:
         _speaking_score(tr)
-    focus = _focus_timeline(tracks, len(samples))
+    focus = _focus_timeline(tracks, len(samples), times=[s2["t"] for s2 in samples],
+                            word_spans=word_spans)
     t2, tx, ty = _focus_path(samples, tracks, focus, config.LEAD_AHEAD_SEC,
                              config.FACE_SAMPLE_INTERVAL)
     tx = _clamp_speed(t2, _smooth(tx), src_w)
+    # MARGIN WAJAH: jaga wajah fokus tak terpotong tepi frame (anti
+    # 'setengah badan/wajah') — kamera berhenti sedikit lebih dalam dari batas.
+    focused = {fti for fti in focus if fti is not None}
+    if focused:
+        fw_max = max(f["fw"] for fti in focused for _, f in tracks[fti]["points"])
+        m_px = 0.55 * (fw_max / _INFER_W) * src_w
+        lo, hi = crop_w / 2 + m_px, src_w - crop_w / 2 - m_px
+        if lo < hi:
+            tx = [min(max(x, lo), hi) for x in tx]
     # CATATAN: cukup satu pass _smooth — kecepatan kontinu (C1) di tiap knot
     # sudah dijamin interpolasi KUBIK Catmull-Rom di cutter._x_expr.
     keyframes = _keyframes(t2, tx, src_w, crop_w)

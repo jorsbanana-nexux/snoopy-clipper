@@ -18,10 +18,13 @@ Semua diatur lewat .env — lihat config.py.
 import json
 import re
 import time
+from datetime import date
 
 from . import config
 
-PROMPT = """Kamu adalah OTAK SNOOPY v4 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
+PROMPT = """Hari ini: {today} — nilai & tulis dengan kesadaran zaman SEKARANG, bukan masa lalu.
+
+Kamu adalah OTAK SNOOPY v6 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
 
 KONTEKS VIDEO:
 - Judul: {title}
@@ -29,6 +32,8 @@ KONTEKS VIDEO:
 - Durasi: {duration} detik. Bahasa: {language}.
 {kids_note}
 {frames_note}
+
+Kesadaran zaman (menambah daging): kamu HIDUP di internet hari ini — tahu berita terkini, trend yang sedang ramai, meme yang sedang dipakai, bahasa yang hidup, dan cara orang menonton SEKARANG. Nilai setiap momen dengan standar & selera audiens tahun ini.
 
 Transkrip video (format [detik_awal-detik_akhir] teks):
 {transcript}
@@ -47,10 +52,18 @@ ATURAN KETAT momen:
 6. Judul + hook harus memancing "wajib tonton" dalam 1-2 detik TANPA membocorkan pay-off. Semua teks dalam bahasa transkrip.
 7. score 1-10 jujur (10 = wajib tonton). Hanya sertakan momen score 7 ke atas — di bawah itu buang; klip biasa-biasa saja = penonton scroll lewat = views mati.
 8. Tes akhir untuk tiap kandidat seperti editor legendaris: "kalau klip ini diunggah, apakah orang SHARE / SAVE / komentar 'apasih'?" Kalau tidak ada yang akan, jangan pilih. Utamakan momen yang menonton sekali lalu menonton ulang (loop).
-9. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
+9. RATAKAN PENCARIAN: baca transkrip HABIS dari awal sampai akhir secara sistematis — JANGAN menumpuk kandidat di awal video. Momen terbaik bisa di sepertiga akhir; klip dari bagian belakang sering justru paling segar.
+10. HIDUP & BERDAGING: tulis judul/hook dengan bahasa yang hidup & spesifik ke momennya (kutipan nyata, angka nyata, nama nyata) — hindari generik seperti "momen menarik". Kalau momennya nyambung dengan isu/berita/trend terkini, angkat; kalau sepenuhnya abadi (evergreen), tulis "evergreen" di "trend". Isi "audience" dengan segmen penonton yang paling bakal SHARE klip ini.
+11. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
 
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "bgm_mood": "comedy"}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy"}}]}}"""
+
+
+def _today() -> str:
+    """Tanggal hari ini utk kesadaran zaman otak (dengan tahun)."""
+    d = date.today()
+    return f"{d.day} {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][d.month - 1]} {d.year}"
 
 
 def _frames_note(frames, interval):
@@ -85,6 +98,7 @@ def _build_prompt(transcript: dict, duration: float, frames, frame_interval, met
         f"[{l['start']:.1f}-{l['end']:.1f}] {l['text']}" for l in transcript["lines"]
     )
     return PROMPT.format(
+        today=_today(),
         transcript=lines,
         title=(meta.get("title") or "—")[:200],
         uploader=(meta.get("uploader") or "—")[:120],
@@ -328,6 +342,8 @@ def _validate(moments: list, words: list, duration: float) -> list:
             "hook": str(m.get("hook", ""))[:120],
             "score": m.get("score", 0),
             "reason": str(m.get("reason", ""))[:200],
+            "trend": str(m.get("trend", ""))[:120],
+            "audience": str(m.get("audience", ""))[:120],
             "bgm_mood": str(m.get("bgm_mood", ""))[:20],
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
