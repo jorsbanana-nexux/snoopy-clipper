@@ -74,6 +74,72 @@ def get_info(url: str) -> dict:
     }
 
 
+def resolve_url(url: str, max_entries=None):
+    """Deteksi jenis URL: video tunggal atau CHANNEL/PROFILE/PLAYLIST.
+    Platform-agnostik (semua yang didukung yt-dlp). Channel/profile dibaca
+    FLAT (entri ringan — cepat, tanpa ekstraksi per video).
+    Return ("video", info, None) atau ("channel", {"title","uploader"}, entries)."""
+    url = normalize_url(url)
+    opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "noplaylist": True,             # watch?v=..&list=.. tetap dianggap video tunggal
+        "extract_flat": "in_playlist",  # channel/profile -> daftar entri ringan
+        "playlistend": int(max_entries or config.CHANNEL_MAX_CANDIDATES),
+        **_cookie_opts(),
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
+        return "channel", {
+            "title": info.get("title") or info.get("uploader")
+                      or info.get("channel") or "Channel",
+            "uploader": info.get("uploader") or info.get("channel") or "",
+        }, list(info["entries"])
+    return "video", info, None
+
+
+def pick_channel_best(entries):
+    """Pilih video TERBAIK dari channel — DIPERHITUNGKAN, bukan random:
+    skor = popularitas (views) x faktor durasi-wajar-untuk-klip x bonus
+    posisi terbaru. Live/upcoming & shorts kurang layak disaring.
+    Return (url, judul, alasan) atau (None, "", alasan)."""
+    cands = []
+    n = len(entries)
+    for pos, e in enumerate(entries):
+        if not e:
+            continue
+        if (e.get("live_status") or "") in ("is_live", "post_live", "is_upcoming"):
+            continue  # live/upcoming tak bisa dipotong jadi klip
+        url = e.get("url") or e.get("webpage_url")
+        if not url:
+            continue
+        views = float(e.get("view_count") or 0)
+        dur = float(e.get("duration") or 0)
+        dur_f = 1.0
+        if dur and dur < 90:
+            dur_f = max(0.35, dur / 90.0)      # terlalu pendek: bahan klip tipis
+        elif dur > 3 * 3600:
+            dur_f = 0.7                        # sangat panjang: unduhan berat
+        recent_f = 1.0 + 0.5 * (n - pos) / max(1, n)  # terbaru sedikit diunggulkan
+        cands.append((views * dur_f * recent_f, url,
+                      e.get("title") or "Video", views, dur))
+    if not cands:
+        return None, "", "channel tidak punya video yang bisa diproses"
+    cands.sort(key=lambda c: c[0], reverse=True)
+    best = cands[0]
+    views = best[3]
+    if views >= 1_000_000:
+        vtxt = f"{views / 1_000_000:.1f} juta views"
+    elif views > 0:
+        vtxt = f"{int(views):,} views".replace(",", ".")
+    else:
+        vtxt = "video terbaru (views tak tersedia)"
+    why = vtxt
+    if best[4]:
+        why += f" • durasi {int(best[4] // 60)}m — pas untuk dijadikan klip"
+    return best[1], best[2], why
+
+
 def download(url: str, out_base, time_range=None, on_progress=None) -> str:
     """Unduh video (maks config.MAX_SOURCE_HEIGHT) -> path file mp4 hasil merge.
     time_range=(start, end) detik: unduh HANYA rentang itu (download_ranges)

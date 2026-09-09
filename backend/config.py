@@ -136,6 +136,12 @@ BGM = env("BGM", "1").lower() in ("1", "true", "on")
 BGM_VOLUME = float(env("BGM_VOLUME", "0.15"))  # 15% dari suara utama
 BGM_DIR = BASE_DIR / "bgm"
 
+# ============ URL CHANNEL/PROFILE (auto-deteksi, semua platform yt-dlp) ============
+# Tempel link channel/profile/playlist -> sistem memilih video TERBAIK dari
+# CHANNEL_MAX_CANDIDATES entri terbaru: diperhitungkan dari popularitas
+# (views) x kesesuaian durasi-untuk-klip x posisi terbaru — bukan random.
+CHANNEL_MAX_CANDIDATES = int(env("CHANNEL_MAX_CANDIDATES", "60"))
+
 # ============ PEMBICARA AKTIF (dukungan 2..10+ orang, anti kacau) ============
 # Ganti fokus hanya kalau pembicara baru MENAHAN bicara >= SPEAKER_SWITCH_SEC
 # (balasan singkat "oke"/"ya"/anggukan < ini = backchannel -> DIABAIKAN).

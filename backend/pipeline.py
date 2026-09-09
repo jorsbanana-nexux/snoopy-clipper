@@ -142,7 +142,25 @@ def _run(job_id):
         _update(job_id, status="running", step="info",
                 message="Mengambil info video…", pct=2, eta_seconds=None)
         local = job.get("local_path")
-        info = downloader.get_info_local(local) if local else downloader.get_info(job["url"])
+        if local:
+            info = downloader.get_info_local(local)
+        else:
+            # URL bisa berupa video, CHANNEL/PROFILE, atau playlist (semua
+            # platform) — channel otomatis diseleksi: pilih video TERBAIK
+            # (diperhitungkan dari popularitas & kesesuaian klip, bukan random)
+            kind, ch, entries = downloader.resolve_url(job["url"])
+            if kind == "channel":
+                _update(job_id, step="info", pct=3,
+                        message=f"Channel terdeteksi: {ch['title']} — memilih video "
+                                f"terbaik dari {len(entries)} kandidat "
+                                f"(diperhitungkan, bukan random)…")
+                vurl, vtitle, why = downloader.pick_channel_best(entries)
+                if not vurl:
+                    raise RuntimeError(f"Channel ini {why}.")
+                job["url"] = vurl
+                _update(job_id, pct=4,
+                        message=f"Dipilih: {vtitle} — {why}. Lanjut proses normal…")
+            info = downloader.get_info(job["url"])
         duration = info["duration"]
         _jobs[job_id]["info"] = info  # konteks utk otak v3 (judul/channel/deteksi anak)
         if duration <= 0:
