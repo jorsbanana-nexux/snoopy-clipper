@@ -97,3 +97,5 @@ h2 { font-size: 18px; margin: 40px 0 14px; color: var(--text); }
   .input-row { flex-direction: column; }
   h1 { font-size: 30px; }
 }
+
+.bgm-credit { color: #8a8f98; font-size: 11px; width: 100%; }

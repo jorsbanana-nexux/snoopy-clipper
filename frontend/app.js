@@ -134,6 +134,7 @@ async function loadLibrary() {
               <b>${c.title}</b>
               <span class="score">★ ${c.score}</span>
               <span>${c.duration}s · ${c.width}x${c.height}</span>
+              ${c.bgm ? `<span class="bgm-credit">${c.bgm}</span>` : ""}
               <a class="dl" href="${c.path}" download>Download MP4</a>
             </div>
           </div>`).join("")}

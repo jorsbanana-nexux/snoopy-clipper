@@ -238,7 +238,6 @@ def extract_frames(video_path, out_dir, duration: float) -> float:
     Interval menyesuaikan supaya total frame <= config.BRAIN_MAX_FRAMES.
     -> interval (frame ke-i ada di detik i*interval). Cache per video.
     """
-    import math
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     existing = sorted(out_dir.glob("f_*.jpg"))

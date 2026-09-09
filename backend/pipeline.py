@@ -227,7 +227,9 @@ def _run(job_id):
 
 def _download_full(job_id, info) -> Path:
     """Unduh video penuh (cache: video sama tidak diunduh ulang)."""
-    _update(job_id, step="download", message="Mengunduh video…", pct=10)
+    est = _estimates(float(info.get("duration") or 0))
+    _update(job_id, step="download", message="Mengunduh video…", pct=10,
+            eta_seconds=_left(est, "download", 1.0, 0.0))
     video_path = config.DOWNLOADS_DIR / f"{info['id']}.mp4"
     if not video_path.exists():
         video_path = Path(downloader.download(_jobs[job_id]["url"],
@@ -238,8 +240,10 @@ def _download_full(job_id, info) -> Path:
 
 def _frames(job_id, video_path, info, duration):
     """Cuplikan frame untuk analisis visual otak (cache per video)."""
+    est = _estimates(duration)
     _update(job_id, step="frames", pct=45,
-            message="Menyiapkan cuplikan frame untuk analisis visual…")
+            message="Menyiapkan cuplikan frame untuk analisis visual…",
+            eta_seconds=_left(est, "frames", 1.0, 0.0))
     frames_dir = config.DOWNLOADS_DIR / f"{info['id']}_frames"
     interval = cutter.extract_frames(video_path, frames_dir, duration)
     return (frames_dir, interval)
@@ -256,11 +260,12 @@ def _transcribe_full(job_id, info, video_path, duration) -> dict:
     def prog(frac):
         _update(job_id, pct=25 + int(19 * frac),
                 message=f"Transkripsi Whisper {config.WHISPER_MODEL}: {int(frac * 100)}% — berjalan normal, bukan stuck",
-                eta_seconds=max(5.0, est * (1 - frac)))
+                eta_seconds=max(5.0, est_left - est * frac))
 
+    est_left = _left(_estimates(duration), "transcribe", 1.0, 0.0)
     _update(job_id, step="transcribe", pct=25,
             message=f"Transkripsi Whisper {config.WHISPER_MODEL} {config.WHISPER_COMPUTE}…",
-            eta_seconds=est)
+            eta_seconds=est_left)
     t0 = time.time()
     transcript = transcriber.transcribe(wav_path, expected_duration=duration, on_progress=prog)
     if not transcript["words"]:
@@ -310,7 +315,8 @@ def _brain(job_id, transcript, duration, frames) -> list:
     frames_dir, frame_interval = frames if frames else (None, None)
     _update(job_id, step="brain", pct=48,
             message="Gemini menganalisis momen terbaik"
-                    + (" (transkrip + visual)…" if frames_dir else " (transkrip lengkap)…"))
+                    + (" (transkrip + visual)…" if frames_dir else " (transkrip lengkap)…"),
+            eta_seconds=_estimates(duration)["brain"])
     t0 = time.time()
     # KONTEKS v3: judul + channel + deteksi anak -> otak pahami dulu, baru pilih
     job = _jobs[job_id]
@@ -433,7 +439,11 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
             _enforce_full_audio(job_id, i + 1, total, out_path)
+            # DRIFT KALIBRASI: kecepatan nyata klip ini melatih estimasi klip
+            # berikutnya — ETA makin akurat sepanjang job (bukan tebakan statis)
             drift = _drift(time.time() - t0, render_est[i])
+            for j in range(i + 1, total):
+                render_est[j] = max(5.0, render_est[j] * drift)
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
         except Exception as e:
@@ -537,6 +547,7 @@ def _render_ranged(job_id, info, moments, full_words):
                 subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
+            t0 = time.time()  # untuk kalibrasi drift klip berikutnya
             _update(job_id, step="render", pct=base_pct + int(span * 0.9),
                     message=f"Klip {i + 1}/{total}: {m['title']} — render…",
                     eta_seconds=sum(rd_est[i:]))
@@ -550,6 +561,10 @@ def _render_ranged(job_id, info, moments, full_words):
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
             _enforce_full_audio(job_id, i + 1, total, out_path)
+            # DRIFT KALIBRASI (ranged): kecepatan nyata -> estimasi klip berikut
+            drift = _drift(time.time() - t0, rd_est[i])
+            for j in range(i + 1, total):
+                rd_est[j] = max(5.0, rd_est[j] * drift)
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
         except Exception as e:
