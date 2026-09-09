@@ -410,9 +410,7 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
-            av_warn = cutter.av_duration_check(out_path)
-            if av_warn:
-                _update(job_id, message=f"Klip {i + 1}/{total}: {av_warn}")
+            _enforce_full_audio(job_id, i + 1, total, out_path)
             drift = _drift(time.time() - t0, render_est[i])
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
@@ -527,9 +525,7 @@ def _render_ranged(job_id, info, moments, full_words):
             cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
-            av_warn = cutter.av_duration_check(out_path)
-            if av_warn:
-                _update(job_id, message=f"Klip {i + 1}/{total}: {av_warn}")
+            _enforce_full_audio(job_id, i + 1, total, out_path)
             meta_clips.append(_clip_meta(clip_id, m, tw, th, info,
                                          (bgm_track or {}).get("credit", "")))
         except Exception as e:
@@ -561,6 +557,26 @@ def _clip_words_local(info, m, i, seg_path, full_words,
         cutter.extract_audio(seg_path, wav_path)
     return transcriber.transcribe(
         wav_path, expected_duration=seg_dur, on_progress=on_progress)["words"]
+
+
+def _enforce_full_audio(job_id, n_clip, total, out_path):
+    """AUDIO WAJIB FULL — bukan sekadar peringatan (keputusan owner):
+    apad sudah menjamin di filter graph; cek ini gerbang terakhir.
+    Kalau audio tetap kurang panjang: PERBAIKI otomatis (pad ke panjang
+    video, video stream-copy). Kalau masih gagal -> raise agar klip
+    ditandai gagal & TIDAK TERSIMPAN — video sunyi tak pernah delivery."""
+    warn = cutter.av_duration_check(out_path)
+    if not warn:
+        return
+    _update(job_id, message=f"Klip {n_clip}/{total}: {warn} — perbaiki otomatis…")
+    if not cutter.repair_audio_tail(out_path):
+        raise RuntimeError(f"{warn} — perbaikan otomatis gagal, klip dilewati "
+                            f"(jangan sampai tersimpan video sunyi)")
+    warn2 = cutter.av_duration_check(out_path)
+    if warn2:
+        raise RuntimeError(f"{warn2} — tetap bermasalah setelah perbaikan, klip dilewati")
+    _update(job_id, message=f"Klip {n_clip}/{total}: audio diperbaiki — kini full "
+                            f"sepanjang video ✓")
 
 
 def _seg_base(info, m) -> Path:

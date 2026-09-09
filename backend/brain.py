@@ -16,6 +16,7 @@ GEMINI_PRIMARY_RETRIES kali, lalu turun ke daftar model cadangan
 Semua diatur lewat .env — lihat config.py.
 """
 import json
+import re
 import time
 
 from . import config
@@ -97,6 +98,63 @@ def _build_prompt(transcript: dict, duration: float, frames, frame_interval, met
     )
 
 
+# ---------------- memori kesehatan model (PERMANEN, lintas run) ----------------
+# Penguatan owner: masalah 'rantai model buang waktu' tidak boleh terulang
+# "sepanjang masa". Model yang terbukti bermasalah dicatat di file —
+# lintas run, lintas restart — sehingga TIDAK PERNAH lagi membuang
+# percobaan ke model yang sama:
+#   - model dimatikan Google (404) -> blacklist SELAMANYA
+#   - kuota 0 struktural (limit:0 free tier) -> blacklist 7 hari (cek ulang mingguan)
+#   - kuota harian habis (429 biasa) -> blacklist 24 jam (reset tiap hari)
+# Kalau SEMUA model ter-blacklist (mis. ganti API key baru) -> blacklist
+# diabaikan supaya tidak dead-lock (dicoba semua seperti biasa).
+
+_HEALTH_FILE = config.MODELS_DIR / "model_health.json"
+
+
+def _load_health() -> dict:
+    try:
+        return json.loads(_HEALTH_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_health(d: dict):
+    try:
+        _HEALTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        # pruning: buang catatan kedaluwarsa saat menyimpan
+        d = {m: v for m, v in d.items()
+             if v.get("until") is None or v.get("until", 0) > now}
+        _HEALTH_FILE.write_text(json.dumps(d, indent=1), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _remember_model_failure(model: str, e):
+    """Catat model bermasalah secara PERMANEN — dipakai semua run berikutnya."""
+    s = str(e)
+    now = time.time()
+    if "no longer available" in s.lower() or "404" in s or "NOT_FOUND" in s:
+        until, why = None, "model dimatikan Google (404) — selamanya"
+    elif re.search(r"(quotaValue|limit)['\"]?\s*[:=]\s*['\"]?0\b", s):
+        until = now + 7 * 86400
+        why = "kuota 0 struktural (free tier) — cek ulang mingguan"
+    else:
+        until = now + 86400
+        why = "kuota habis (reset harian) — cek ulang besok"
+    d = _load_health()
+    d[model] = {"until": until, "why": why, "at": now}
+    _save_health(d)
+    print(f"[brain] model '{model}' dicatat bermasalah: {why}", flush=True)
+
+
+def _blacklisted_models() -> set:
+    now = time.time()
+    return {m for m, v in _load_health().items()
+            if v.get("until") is None or v.get("until", 0) > now}
+
+
 def _fallback_models() -> list:
     """Daftar model cadangan dari .env (GEMINI_FALLBACK_MODELS, dipisah koma),
     urutan dipertahankan, model utama & duplikat dibuang."""
@@ -113,10 +171,14 @@ def _fallback_models() -> list:
 
 def _model_attempts() -> list:
     """Urutan MODEL DISTINCT yang akan dicoba: utama lalu tiap cadangan
-    (dalam urutan .env). Pengulangan model utama TIDAK di sini lagi —
-    keputusan ulang/lompat kini per-error (lihat _generate_with_fallback),
-    supaya API key tanpa kuota (limit:0, permanen) tidak diulang sia-sia."""
-    return [config.GEMINI_MODEL] + _fallback_models()
+    (dalam urutan .env) — DIKURANGI model yang tercatat bermasalah di
+    memori kesehatan permanen (model mati/kuota-0 tak pernah dipanggil
+    lagi lintas run). Kalau SEMUA ter-blacklist (API key baru dsb) ->
+    blacklist diabaikan supaya tidak dead-lock."""
+    models = [config.GEMINI_MODEL] + _fallback_models()
+    bad = _blacklisted_models()
+    ok = [m for m in models if m not in bad]
+    return ok if ok else models
 
 
 def _is_quota_error(e) -> bool:
@@ -172,6 +234,8 @@ def _generate_with_fallback(client, types, parts):
             except Exception as e:
                 errors.append(f"{model} (percobaan {attempt}): {e}")
                 permanent = _is_quota_error(e) or _is_dead_model_error(e)
+                if permanent:
+                    _remember_model_failure(model, e)  # catat PERMANEN — lintas run
                 reason = "PERMANEN, lompat segera" if permanent else "sementara"
                 print(f"[brain] model '{model}' gagal [{reason}]: {e}", flush=True)
                 is_last_model = mi == len(models) - 1

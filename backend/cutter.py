@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 from . import config
 
@@ -194,6 +195,29 @@ def av_duration_check(out_path):
     return None
 
 
+def repair_audio_tail(out_path) -> bool:
+    """PERBAIKI otomatis output yang audionya lebih pendek dari video:
+    pad audio ke panjang video (apad + -shortest). Video stream-copy —
+    cepat, tanpa render ulang. True kalau sukses."""
+    tmp = Path(str(out_path) + ".fix.mp4")
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+             "-i", str(out_path), "-map", "0:v:0", "-map", "0:a:0",
+             "-c:v", "copy", "-af", "apad", "-shortest",
+             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+             str(tmp)],
+            capture_output=True, text=True, timeout=600)
+        if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 1000:
+            tmp.unlink(missing_ok=True)
+            return False
+        tmp.replace(out_path)
+        return True
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        return False
+
+
 def probe_duration(path) -> float:
     """Durasi media (detik) via ffprobe."""
     out = subprocess.run(
@@ -215,7 +239,6 @@ def extract_frames(video_path, out_dir, duration: float) -> float:
     -> interval (frame ke-i ada di detik i*interval). Cache per video.
     """
     import math
-    from pathlib import Path
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     existing = sorted(out_dir.glob("f_*.jpg"))
