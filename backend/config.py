@@ -61,10 +61,13 @@ GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.1-pro-preview")  # tertinggi duluan
 # (dalam urutan yang ditulis) sampai ada yang berhasil. Diam-diam log ke console
 # tiap kali pindah model, supaya kelihatan di log kapan fallback terjadi.
 GEMINI_PRIMARY_RETRIES = int(env("GEMINI_PRIMARY_RETRIES", "2"))  # percobaan model utama sebelum turun
+# CATATAN: gemini-2.5-pro DIBUANG dari daftar — Google sudah mematikannya
+# (404 permanen "no longer available for new users"), jadi kalau tetap ada
+# di sini, SETIAP job membuang satu percobaan penuh ke model yang pasti mati.
 GEMINI_FALLBACK_MODELS = env(
     "GEMINI_FALLBACK_MODELS",
-    "gemini-2.5-pro,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-2.5-flash",
-)  # urutan TURUN dari yang paling tinggi: pro dulu, lalu flash terbaru -> lama
+    "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-2.5-flash",
+)  # urutan TURUN dari yang paling tinggi: flash terbaru -> lama
 GEMINI_RETRY_DELAY_SEC = float(env("GEMINI_RETRY_DELAY_SEC", "2.0"))  # jeda antar percobaan
 
 # ============ OUTPUT ============

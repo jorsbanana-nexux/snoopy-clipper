@@ -112,44 +112,76 @@ def _fallback_models() -> list:
 
 
 def _model_attempts() -> list:
-    """Urutan model yang akan dicoba: model utama diulang GEMINI_PRIMARY_RETRIES kali,
-    lalu tiap model cadangan sekali (dalam urutan .env) sampai ada yang lolos."""
-    retries = max(1, config.GEMINI_PRIMARY_RETRIES)
-    attempts = [config.GEMINI_MODEL] * retries
-    attempts += _fallback_models()
-    return attempts
+    """Urutan MODEL DISTINCT yang akan dicoba: utama lalu tiap cadangan
+    (dalam urutan .env). Pengulangan model utama TIDAK di sini lagi —
+    keputusan ulang/lompat kini per-error (lihat _generate_with_fallback),
+    supaya API key tanpa kuota (limit:0, permanen) tidak diulang sia-sia."""
+    return [config.GEMINI_MODEL] + _fallback_models()
+
+
+def _is_quota_error(e) -> bool:
+    """429 / RESOURCE_EXHAUSTED / kuota habis — PERMANEN untuk sesi ini
+    (limit:0 tidak akan berubah dalam hitungan detik). Mengulang model
+    YANG SAMA sia-sia -> harus lompat ke model lain SEGERA, tanpa jeda."""
+    s = str(e)
+    return "429" in s or "RESOURCE_EXHAUSTED" in s or "quota" in s.lower()
+
+
+def _is_dead_model_error(e) -> bool:
+    """404 / model dimatikan platform (mis. 'no longer available for new
+    users') — PERMANEN selamanya, bukan cuma sesi ini. Sama seperti kuota:
+    lompat segera, tanpa jeda."""
+    s = str(e)
+    return "404" in s or "NOT_FOUND" in s or "no longer available" in s.lower()
 
 
 def _generate_with_fallback(client, types, parts):
     """
-    Coba model utama sampai GEMINI_PRIMARY_RETRIES kali (jaga-jaga error
-    transient seperti 503 high-demand), lalu turun ke model cadangan satu per
-    satu (GEMINI_FALLBACK_MODELS) sampai ada yang berhasil. Kalau semua gagal,
-    lempar error terakhir dengan ringkasan semua percobaan.
+    Coba tiap model (utama lalu cadangan, GEMINI_FALLBACK_MODELS) satu per
+    satu. Keputusan ulang/lompat PER JENIS ERROR:
+    - kuota habis (429) / model dimatikan (404): PERMANEN -> lompat ke model
+      berikutnya SEGERA, tanpa jeda, tanpa mengulang model yang sama
+      (mengulang dijamin gagal lagi -> cuma buang waktu).
+    - error sementara (503 sibuk, network, timeout, dll): layak diulang ->
+      model utama diulang sampai GEMINI_PRIMARY_RETRIES kali dengan jeda
+      GEMINI_RETRY_DELAY_SEC (beri waktu server pulih), cadangan sekali.
+    Kalau semua model gagal, lempar error dengan ringkasan semua percobaan.
     """
-    attempts = _model_attempts()
+    models = _model_attempts()
     errors = []
-    for i, model in enumerate(attempts):
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents=parts,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.4,
-                ),
-            )
-            if i > 0:
-                print(f"[brain] berhasil pakai model '{model}' "
-                      f"(percobaan #{i + 1}/{len(attempts)})", flush=True)
-            return resp
-        except Exception as e:
-            errors.append(f"{model}: {e}")
-            print(f"[brain] model '{model}' gagal (percobaan #{i + 1}/{len(attempts)}): {e}",
-                  flush=True)
-            if i < len(attempts) - 1:
-                time.sleep(config.GEMINI_RETRY_DELAY_SEC)
-            continue
+    total_tried = 0
+    for mi, model in enumerate(models):
+        max_tries = max(1, config.GEMINI_PRIMARY_RETRIES) if mi == 0 else 1
+        attempt = 0
+        while attempt < max_tries:
+            attempt += 1
+            total_tried += 1
+            try:
+                resp = client.models.generate_content(
+                    model=model,
+                    contents=parts,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.4,
+                    ),
+                )
+                if total_tried > 1:
+                    print(f"[brain] berhasil pakai model '{model}' "
+                          f"(percobaan #{total_tried})", flush=True)
+                return resp
+            except Exception as e:
+                errors.append(f"{model} (percobaan {attempt}): {e}")
+                permanent = _is_quota_error(e) or _is_dead_model_error(e)
+                reason = "PERMANEN, lompat segera" if permanent else "sementara"
+                print(f"[brain] model '{model}' gagal [{reason}]: {e}", flush=True)
+                is_last_model = mi == len(models) - 1
+                if permanent:
+                    break  # jangan ulangi model yang sama -> lompat ke model berikutnya
+                if attempt < max_tries:
+                    time.sleep(config.GEMINI_RETRY_DELAY_SEC)  # error sementara -> beri waktu pulih
+                elif not is_last_model:
+                    time.sleep(config.GEMINI_RETRY_DELAY_SEC)
+                continue
     raise RuntimeError(
         "Semua model Gemini gagal (utama + cadangan). Rincian:\n" + "\n".join(errors)
     )
