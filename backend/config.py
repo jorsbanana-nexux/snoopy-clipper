@@ -89,6 +89,11 @@ DIARIZE = env("DIARIZE", "0") == "1"
 DIARIZE_TOKEN = env("DIARIZE_TOKEN", "")
 DIARIZE_MODEL = env("DIARIZE_MODEL", "pyannote/speaker-diarization-3.1")
 
+# ============ THUMBNAIL (WAJIB ada, default NYALA) ============
+# Selalu ada file .jpg per klip (rantai fallback berlapis, tidak pernah gagal).
+# 0 hanya kalau benar-benar mau matikan.
+THUMBNAIL = env("THUMBNAIL", "1") == "1"
+
 # ============ STRATEGI CEPAT (audio/video hanya seperlunya) ============
 # 1 = pakai transkrip bawaan platform (instan) untuk otak + unduh video HANYA
 #     rentang klip terpilih. 0 = jalur klasik (unduh penuh + whisper penuh).

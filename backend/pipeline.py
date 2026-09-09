@@ -22,7 +22,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import (config, downloader, transcriber, brain, captions, diarize,
+from . import (config, downloader, transcriber, brain, captions, diarize, thumbnail,
               facetrack, subtitles, cutter, library, bgm)
 
 _jobs = {}
@@ -445,6 +445,8 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
             _enforce_full_audio(job_id, i + 1, total, out_path)
+            if config.THUMBNAIL:
+                thumbnail.make_thumb(video_path, start, end, out_path, vdir / f"{clip_id}.jpg")
             # DRIFT KALIBRASI: kecepatan nyata klip ini melatih estimasi klip
             # berikutnya — ETA makin akurat sepanjang job (bukan tebakan statis)
             drift = _drift(time.time() - t0, render_est[i])
@@ -567,6 +569,8 @@ def _render_ranged(job_id, info, moments, full_words):
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
                                bgm=bgm_track)
             _enforce_full_audio(job_id, i + 1, total, out_path)
+            if config.THUMBNAIL:
+                thumbnail.make_thumb(seg_path, 0.0, seg_dur, out_path, vdir / f"{clip_id}.jpg")
             # DRIFT KALIBRASI (ranged): kecepatan nyata -> estimasi klip berikut
             drift = _drift(time.time() - t0, rd_est[i])
             for j in range(i + 1, total):
@@ -666,6 +670,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,
         "path": f"/api/clips/{info['id']}/{clip_id}",
+        "thumb": f"/api/thumbs/{info['id']}/{clip_id}",
     }
 
 

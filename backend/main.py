@@ -46,6 +46,18 @@ def get_library():
     return {"videos": library.list_videos()}
 
 
+@app.get("/api/thumbs/{video_id}/{clip_id}")
+def get_thumb(video_id: str, clip_id: str):
+    """Thumbnail klip (SELALU ada — dijamin modul thumbnail)."""
+    from . import library, config
+    p = config.LIBRARY_DIR / video_id / f"{clip_id}.jpg"
+    if not p.exists():
+        library.video_dir(video_id)
+        from . import thumbnail
+        thumbnail.make_thumb(p, 0, 0, p, p)  # regenerasi placeholder — tak pernah 404
+    return FileResponse(p, media_type="image/jpeg")
+
+
 @app.get("/api/clips/{video_id}/{clip_id}")
 def get_clip(video_id: str, clip_id: str):
     p = library.clip_path(video_id, clip_id)

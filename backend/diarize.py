@@ -71,7 +71,7 @@ def assign_speakers(transcript: dict, turns) -> dict:
 def maybe_diarize(transcript: dict, wav_path, on_progress=None) -> dict:
     """Hook pipeline: kembalikan transkrip + label pembicara kalau DIARIZE=1.
     Gagal apa pun -> transkrip asli dikembalikan utuh (tidak pernah raise)."""
-    if config.DIARIZE != "1" or not transcript.get("words"):
+    if not config.DIARIZE or not transcript.get("words"):
         return transcript
     try:
         from pyannote.audio import Pipeline  # lazy: tidak terpakai = tidak diimport
@@ -83,7 +83,8 @@ def maybe_diarize(transcript: dict, wav_path, on_progress=None) -> dict:
         if on_progress:
             on_progress(0.2, "Diarization: mengenali pembicara…")
         diar = pipe(str(wav_path))
-        turns = [(t.start, t.end, t.speaker) for t in diar.itertracks(yield_label=True)]
+        # itertracks(yield_label=True) -> (Segment, track_name, label)
+        turns = [(t.start, t.end, spk) for t, _tr, spk in diar.itertracks(yield_label=True)]
         out = assign_speakers(transcript, turns)
         if on_progress:
             n = len({l.get("speaker") for l in out["lines"] if l.get("speaker")})

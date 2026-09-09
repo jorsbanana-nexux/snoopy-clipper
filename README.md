@@ -62,6 +62,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | **Motion blur ala game** | Aktif HANYA saat kamera pan (tmix), halus, subtitle tetap tajam. |
 | **Output** | MP4 9:16, 1080x1920 (auto 720x1280 kalau sumber kecil), H.264 + AAC, auto-detect encoder GPU. |
 | **ETA realtime** | Estimasi per langkah, dikoreksi otomatis dari kecepatan aktual PC-mu → makin lama makin akurat. |
+| **Thumbnail otomatis WAJIB (default NYALA)** | Setiap klip PASTI punya thumbnail .jpg 1080x1920 — tidak pernah gagal/hilang: rantai fallback 4 lapis (frame wajah terbaik → frame terpajam → frame klip jadi → kartu gradient). Pemilihan frame ala thumbnail profesional: wajah terbesar + mulut terbuka (ekspresi = klik) + ketajaman + exposure waras; crop 9:16 wajah di 40% atas + grade kontras/saturasi/unsharp sama selera klip. TANPA teks → netral semua bahasa (teks = fase 2). Disajikan via `/api/thumbs/<video>/<clip>` + kolom `thumb` di meta; UI/frontend cukup baca meta.json. |
 | **Diarization (opsional, default MATI)** | Label pembicara per baris transkrip (pyannote, CPU) → otak tahu SIAPA bicara apa. Monolog otomatis diabaikan (label dibuang). Gagal apa pun (token/library tidak ada) → job jalan normal tanpa label, tidak pernah error. Setup: `pip install -r requirements-diarize.txt`, akun HuggingFace gratis + accept license model, lalu `.env`: `DIARIZE=1` dan `DIARIZE_TOKEN=hf_xxx`. |
 
 ---
