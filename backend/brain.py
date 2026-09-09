@@ -95,7 +95,8 @@ def _build_prompt(transcript: dict, duration: float, frames, frame_interval, met
     Dipisah jadi fungsi supaya bisa diuji tanpa API."""
     meta = meta or {}
     lines = "\n".join(
-        f"[{l['start']:.1f}-{l['end']:.1f}] {l['text']}" for l in transcript["lines"]
+        f"[{l['start']:.1f}-{l['end']:.1f}]" + (f" {l['speaker']}:" if l.get("speaker") else "") + f" {l['text']}"
+        for l in transcript["lines"]
     )
     return PROMPT.format(
         today=_today(),

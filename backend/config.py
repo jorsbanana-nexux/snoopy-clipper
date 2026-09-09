@@ -81,6 +81,14 @@ WHISPER_MODEL = env("WHISPER_MODEL", "small")      # tiny / base / small / mediu
 WHISPER_COMPUTE = env("WHISPER_COMPUTE", "int8")
 WHISPER_BEAM = int(env("WHISPER_BEAM", "1"))  # 1 = tercepat (ketepatan waktu kata tetap); 5 = anti-typo maksimal
 
+# ============ DIARIZATION (opsional, default MATI) ============
+# Label "siapa bicara" per baris/kata -> otak Gemini bisa pilih momen per pembicara.
+# Butuh: pip install -r requirements-diarize.txt + token HuggingFace (lihat backend/diarize.py).
+# Gagal apa pun (library/token tidak ada) -> pipeline jalan normal TANPA label, tidak pernah error.
+DIARIZE = env("DIARIZE", "0") == "1"
+DIARIZE_TOKEN = env("DIARIZE_TOKEN", "")
+DIARIZE_MODEL = env("DIARIZE_MODEL", "pyannote/speaker-diarization-3.1")
+
 # ============ STRATEGI CEPAT (audio/video hanya seperlunya) ============
 # 1 = pakai transkrip bawaan platform (instan) untuk otak + unduh video HANYA
 #     rentang klip terpilih. 0 = jalur klasik (unduh penuh + whisper penuh).

@@ -22,7 +22,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import (config, downloader, transcriber, brain, captions,
+from . import (config, downloader, transcriber, brain, captions, diarize,
               facetrack, subtitles, cutter, library, bgm)
 
 _jobs = {}
@@ -270,6 +270,9 @@ def _transcribe_full(job_id, info, video_path, duration) -> dict:
     transcript = transcriber.transcribe(wav_path, expected_duration=duration, on_progress=prog)
     if not transcript["words"]:
         raise RuntimeError("Tidak ada ucapan terdeteksi — otak AI butuh transkrip untuk memilih momen.")
+    transcript = diarize.maybe_diarize(
+        transcript, wav_path,
+        on_progress=lambda f, m: _update(job_id, step="diarize", pct=45 + int(3 * f), message=m))
     _update(job_id, pct=45,
             message=f"Transkrip ok: {len(transcript['lines'])} baris, bahasa {transcript['language']} "
                     f"({int(time.time() - t0)} dtk)")
@@ -305,6 +308,9 @@ def _transcribe_audio_only(job_id, info, duration) -> dict:
     transcript = transcriber.transcribe(wav_path, expected_duration=duration, on_progress=prog)
     if not transcript["words"]:
         raise RuntimeError("Tidak ada ucapan terdeteksi — otak AI butuh transkrip untuk memilih momen.")
+    transcript = diarize.maybe_diarize(
+        transcript, wav_path,
+        on_progress=lambda f, m: _update(job_id, step="diarize", pct=45 + int(3 * f), message=m))
     _update(job_id, pct=45,
             message=f"Transkrip ok: {len(transcript['lines'])} baris, bahasa {transcript['language']} "
                     f"({int(time.time() - t0)} dtk)")
