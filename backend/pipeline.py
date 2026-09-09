@@ -34,9 +34,17 @@ _worker_started = None
 # ---------------- infrastruktur job ----------------
 
 def _persist(job):
-    (config.JOBS_DIR / f"{job['id']}.json").write_text(
-        json.dumps(job, ensure_ascii=False), encoding="utf-8"
-    )
+    """Tulis status job secara atomik.
+
+    Frontend dapat mem-poll kapan saja. Menulis langsung ke file JSON membuat
+    pembaca sesekali menerima JSON setengah jadi ketika update progres terjadi.
+    Tulis ke file sementara lalu replace agar setiap pembaca melihat snapshot
+    lengkap lama atau lengkap baru, tidak pernah data korup.
+    """
+    path = config.JOBS_DIR / f"{job['id']}.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
 
 
 def _worker():
@@ -230,12 +238,14 @@ def _download_full(job_id, info) -> Path:
     est = _estimates(float(info.get("duration") or 0))
     _update(job_id, step="download", message="Mengunduh video…", pct=10,
             eta_seconds=_left(est, "download", 1.0, 0.0))
-    video_path = config.DOWNLOADS_DIR / f"{info['id']}.mp4"
-    if not video_path.exists():
-        video_path = Path(downloader.download(_jobs[job_id]["url"],
-                                              config.DOWNLOADS_DIR / info["id"]))
+    out_base = config.DOWNLOADS_DIR / info["id"]
+    # yt-dlp biasanya merge menjadi MP4, tetapi extractor tertentu sah-sah saja
+    # mengembalikan WebM/MKV. Jangan mengasumsikan ekstensi .mp4 untuk cache.
+    video_path = downloader.cached_media(out_base)
+    if video_path is None:
+        video_path = Path(downloader.download(_jobs[job_id]["url"], out_base))
     _update(job_id, pct=15, message="Video siap")
-    return video_path
+    return Path(video_path)
 
 
 def _frames(job_id, video_path, info, duration):
@@ -478,10 +488,13 @@ def _render_ranged(job_id, info, moments, full_words):
     wh_est = [(m["end"] - m["start"]) * 0.55 + 3 for m in moments]
     rd_est = [(m["end"] - m["start"]) * render_factor + 6.0 for m in moments]
 
-    # tes dukungan rentang dengan klip pertama (fallback rapi kalau tidak didukung)
+    # Tes dukungan rentang dengan klip pertama (fallback rapi kalau tidak didukung).
+    # Jangan mengasumsikan hasilnya .mp4; beberapa extractor mengembalikan WebM
+    # atau MKV walau merge_output_format telah diminta.
     m0 = moments[0]
-    seg0 = _seg_base(info, m0).with_suffix(".mp4")
-    if not seg0.exists():
+    seg0_base = _seg_base(info, m0)
+    seg0 = downloader.cached_media(seg0_base)
+    if seg0 is None:
         _update(job_id, step="render", pct=50,
                 message=f"Klip 1/{total}: {m0['title']} — unduh rentang…",
                 eta_seconds=sum(dl_est) + sum(wh_est) + sum(rd_est))
@@ -489,8 +502,8 @@ def _render_ranged(job_id, info, moments, full_words):
             def dl0(frac, m0=m0, total=total):
                 _update(job_id, step="render", pct=50 + int(3 * frac),
                         message=f"Klip 1/{total}: {m0['title']} — unduh rentang {int(frac * 100)}%")
-            downloader.download(url, _seg_base(info, m0),
-                                time_range=(m0["start"], m0["end"]), on_progress=dl0)
+            seg0 = Path(downloader.download(url, seg0_base,
+                                             time_range=(m0["start"], m0["end"]), on_progress=dl0))
         except Exception:
             _update(job_id, message="Rentang tidak didukung platform — unduh video penuh…")
             video_path = _download_full(job_id, info)
@@ -505,8 +518,8 @@ def _render_ranged(job_id, info, moments, full_words):
         span = max(1, int(45 / total))
         try:  # tahan gagal per-klip: satu klip error tidak boleh merobek semuanya
             seg_base = _seg_base(info, m)
-            seg_path = seg_base.with_suffix(".mp4")
-            if not seg_path.exists():
+            seg_path = downloader.cached_media(seg_base)
+            if seg_path is None:
                 _update(job_id, step="render", pct=base_pct,
                         message=f"Klip {i + 1}/{total}: {m['title']} — unduh rentang "
                                 f"{int(m['start'])}-{int(m['end'])}d…",
@@ -518,8 +531,8 @@ def _render_ranged(job_id, info, moments, full_words):
                             pct=base_pct + int(span * (0.05 + 0.2 * frac)),
                             message=f"Klip {i + 1}/{total}: {m['title']} — unduh rentang {int(frac * 100)}%")
 
-                downloader.download(url, seg_base, time_range=(m["start"], m["end"]),
-                                    on_progress=dl_prog)
+                seg_path = Path(downloader.download(
+                    url, seg_base, time_range=(m["start"], m["end"]), on_progress=dl_prog))
             seg_dur = cutter.probe_duration(seg_path)
             if seg_dur <= 0.5:
                 raise RuntimeError(f"Segmen klip {i + 1} gagal (durasi {seg_dur:.1f}s)")

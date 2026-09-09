@@ -12,7 +12,7 @@ import urllib.request
 
 import yt_dlp
 
-from .downloader import normalize_url
+from .downloader import normalize_url, _cookie_opts
 
 # urutan preferensi bahasa (id = prioritas user)
 _LANG_PRIORITY = ["id", "en", "ja", "ko", "es", "pt", "zh-Hans", "zh", "ar"]
@@ -24,7 +24,10 @@ def fetch(url: str):
     -> {"language": str, "lines": [{"start","end","text"}], "words": []}
     -> None kalau platform/video tidak punya transkrip.
     """
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}
+    opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "noplaylist": True, **_cookie_opts(),
+    }
     url = normalize_url(url)  # mis. YouTube Kids -> YouTube (transkrip tetap ketemu)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -55,27 +58,52 @@ def fetch(url: str):
         return _parse_vtt(raw, lang)
 
 
+def _tokens(text: str) -> list[str]:
+    """Token ringan untuk menghapus overlap auto-caption yang berjalan."""
+    return re.findall(r"\S+", text or "")
+
+
+def _novel_caption_text(previous: str, current: str) -> str:
+    """Buang bagian awal ``current`` yang mengulang akhir cue sebelumnya.
+
+    Auto-caption YouTube sering mengirim jendela bergulir: ``"halo apa"`` lalu
+    ``"halo apa kabar"``. Mengirim keduanya mentah ke otak membuat kata dan
+    momen seolah-olah berulang. Overlap suffix/prefix menjaga kalimat baru
+    sambil tidak menghapus pengulangan yang bukan overlap berurutan.
+    """
+    prev, curr = _tokens(previous), _tokens(current)
+    limit = min(len(prev), len(curr))
+    for n in range(limit, 0, -1):
+        if [x.casefold() for x in prev[-n:]] == [x.casefold() for x in curr[:n]]:
+            return " ".join(curr[n:])
+    return " ".join(curr)
+
+
 def _parse_json3(raw: str, lang: str):
-    """Format json3 (YouTube): event per cue, sudah bersih & ber-timestamp."""
+    """Format json3 (YouTube), dinormalisasi dari cue berjalan ke teks baru."""
     doc = json.loads(raw)
-    lines, last_text = [], ""
+    lines, last_text, previous_window = [], "", ""
     for ev in doc.get("events", []):
         segs = [s.get("utf8", "") for s in ev.get("segs") or []]
         text = "".join(segs).replace("\n", " ").strip()
         if not text:
             continue
-        if text == last_text:  # auto-caption: jendela bergulir sering duplikat
+        if text == last_text:  # cue identik
+            continue
+        novel = _novel_caption_text(previous_window, text)
+        previous_window = text
+        if not novel:
             continue
         t = ev.get("tStartMs", 0) / 1000.0
         d = (ev.get("dDurationMs") or 2000) / 1000.0
-        lines.append({"start": round(t, 2), "end": round(t + d, 2), "text": text})
+        lines.append({"start": round(t, 2), "end": round(t + d, 2), "text": novel})
         last_text = text
-    if len(lines) >= 3:
+    if lines:
         return {"language": lang, "lines": lines, "words": []}
     return None
 
 
-_TS = re.compile(r"(\d+):(\d+):(\d+)[.,](\d+)")
+_TS = re.compile(r"(?:(\d+):)?(\d+):(\d+)[.,](\d+)")
 
 def _parse_vtt(raw: str, lang: str):
     """Parser generik VTT/SRT untuk platform non-YouTube."""
@@ -85,7 +113,7 @@ def _parse_vtt(raw: str, lang: str):
         if len(ts) < 2:
             continue
         def sec(h, m, s, ms):
-            return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+            return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
         start, end = sec(*ts[0]), sec(*ts[-1])
         text = " ".join(
             ln.strip() for ln in block.splitlines()
@@ -96,6 +124,6 @@ def _parse_vtt(raw: str, lang: str):
             continue
         lines.append({"start": round(start, 2), "end": round(end, 2), "text": text})
         last_text = text
-    if len(lines) >= 3:
+    if lines:
         return {"language": lang, "lines": lines, "words": []}
     return None

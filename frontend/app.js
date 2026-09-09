@@ -2,6 +2,19 @@ const $ = (s) => document.querySelector(s);
 let pollTimer = null;
 let etaTimer = null;
 
+// Semua teks job/library bisa berasal dari judul, channel, atau error extractor
+// eksternal. Jangan pernah masukkan mentah ke innerHTML.
+function esc(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+  }[ch]));
+}
+
+function apiAsset(value) {
+  const path = String(value || "");
+  return path.startsWith("/api/") ? esc(path) : "";
+}
+
 // Hitung-mundur ETA LIVE di sisi browser: backend hanya mengirim estimasi saat
 // pesan baru muncul; di antara itu angka tick turun sendiri tiap detik —
 // jadi "Sisa waktu" tidak pernah tampak beku walau fase sedang berjalan lama.
@@ -93,12 +106,13 @@ function renderJob(job) {
     else if (i === idx && job.status !== "done") cls += " active";
     return `<div class="${cls}">${label}</div>`;
   }).join("");
-  const err = job.status === "error" ? `<p class="error">${job.error || job.message || ""}</p>` : "";
+  const err = job.status === "error"
+    ? `<p class="error">${esc(job.error || job.message || "")}</p>` : "";
   const pct = job.status === "done" ? 100 : job.pct || 0;
   $("#job").innerHTML = `
-    ${job.video ? `<h3>${job.video.title}</h3>` : ""}
+    ${job.video ? `<h3>${esc(job.video.title)}</h3>` : ""}
     <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
-    <p class="msg">${job.message || ""}</p>
+    <p class="msg">${esc(job.message || "")}</p>
     ${job.status !== "error" && job.status !== "done"
         ? `<p class="eta">Sisa waktu: <b id="eta">${fmtEta(job.eta_seconds)}</b> · ${pct}%</p>`
         : ""}
@@ -124,18 +138,19 @@ async function loadLibrary() {
   }
   wrap.innerHTML = data.videos.map((v) => `
     <div class="video">
-      <h3>${v.title}</h3>
-      <p class="meta">${new Date(v.created * 1000).toLocaleDateString("id-ID")} · ${v.clips.length} klip${v.uploader ? " · " + v.uploader : ""}</p>
+      <h3>${esc(v.title)}</h3>
+      <p class="meta">${new Date(v.created * 1000).toLocaleDateString("id-ID")} · ${Number(v.clips?.length || 0)} klip${v.uploader ? " · " + esc(v.uploader) : ""}</p>
       <div class="clips">
-        ${v.clips.map((c) => `
+        ${(v.clips || []).map((c) => `
           <div class="clip">
-            <video src="${c.path}" preload="metadata" controls playsinline></video>
+            <video src="${apiAsset(c.path)}" poster="${apiAsset(c.thumb)}" preload="metadata" controls playsinline></video>
             <div class="clip-info">
-              <b>${c.title}</b>
-              <span class="score">★ ${c.score}</span>
-              <span>${c.duration}s · ${c.width}x${c.height}</span>
-              ${c.bgm ? `<span class="bgm-credit">${c.bgm}</span>` : ""}
-              <a class="dl" href="${c.path}" download>Download MP4</a>
+              <b>${esc(c.title)}</b>
+              ${c.hook ? `<span class="hook">${esc(c.hook)}</span>` : ""}
+              <span class="score">★ ${esc(c.score)}</span>
+              <span>${esc(c.duration)}s · ${esc(c.width)}x${esc(c.height)}</span>
+              ${c.bgm ? `<span class="bgm-credit">${esc(c.bgm)}</span>` : ""}
+              <a class="dl" href="${apiAsset(c.path)}" download>Download MP4</a>
             </div>
           </div>`).join("")}
       </div>

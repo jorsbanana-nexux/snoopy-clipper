@@ -5,6 +5,7 @@ File cache di downloads/ — video yang sama tidak diunduh dua kali.
 import glob
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import yt_dlp
 
@@ -22,17 +23,68 @@ def _cookie_opts() -> dict:
     return {}
 
 
+_MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
+
+
+def cached_media(out_base) -> Path | None:
+    """Kembalikan media cache untuk ``out_base`` tanpa mengunci ke .mp4.
+
+    ``merge_output_format`` adalah preferensi yt-dlp, bukan kontrak universal.
+    Mengasumsikan .mp4 membuat jalur cache/range gagal diam-diam pada extractor
+    yang hanya menyediakan WebM atau MKV.
+    """
+    base = Path(out_base)
+    choices = [p for p in base.parent.glob(base.name + ".*")
+               if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS
+               and p.stat().st_size > 1024]
+    if not choices:
+        return None
+    # MP4 paling kompatibel; bila tidak ada, gunakan berkas terbaru yang nyata.
+    choices.sort(key=lambda p: (p.suffix.lower() != ".mp4", -p.stat().st_mtime))
+    return choices[0]
+
+
 def normalize_url(url: str) -> str:
     """Normalisasi URL antar-platform agar ekstraktor yt-dlp tepat.
     YouTube Kids -> YouTube biasa (video ID sama, ekstraktor utama lebih andal)."""
     import re
-    m = re.match(r"^(https?://)(?:www\.|m\.)?youtubekids\.com/watch\?(.+)$",
+    m = re.match(r"^(https?://)(?:www\.|m\.)?(?:youtubekids|kids\.youtube)\.com/watch\?(.+)$",
                  (url or "").strip(), re.I)
     if m:
         vm = re.search(r"(?:^|[?&])v=([\w-]{6,})", m.group(2))
         if vm:
             return f"{m.group(1)}www.youtube.com/watch?v={vm.group(1)}"
     return url
+
+
+def _youtube_profile_videos_url(url: str) -> str:
+    """Arahkan homepage profil YouTube ke tab video panjang yang nyata.
+
+    yt-dlp memperlakukan ``/@handle`` sebagai halaman tab dan mengembalikan
+    playlist ``Videos``/``Shorts`` sebagai entri.  Itu bukan video yang bisa
+    langsung dipilih atau diunduh.  URL ``/@handle/videos`` (begitu pula
+    ``/channel/<id>/videos`` dan bentuk legacy) mengembalikan kandidat video
+    sebenarnya. URL watch, shorts, dan tab yang sudah eksplisit tidak diubah.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+    host = parsed.hostname or ""
+    if not (host == "youtube.com" or host.endswith(".youtube.com")):
+        return url
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return url
+    tabs = {"videos", "shorts", "streams", "playlists", "featured", "community", "about", "live"}
+    if parts[-1].lower() in tabs or parts[0].lower() in {"watch", "shorts", "playlist"}:
+        return url
+    is_handle_home = len(parts) == 1 and parts[0].startswith("@")
+    is_legacy_home = len(parts) == 2 and parts[0].lower() in {"channel", "user", "c"}
+    if not (is_handle_home or is_legacy_home):
+        return url
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") + "/videos",
+                       parsed.query, ""))
 
 
 # sinyal video anak: host kids (pasti) atau kata kunci judul/channel (petunjuk)
@@ -79,7 +131,7 @@ def resolve_url(url: str, max_entries=None):
     Platform-agnostik (semua yang didukung yt-dlp). Channel/profile dibaca
     FLAT (entri ringan — cepat, tanpa ekstraksi per video).
     Return ("video", info, None) atau ("channel", {"title","uploader"}, entries)."""
-    url = normalize_url(url)
+    url = _youtube_profile_videos_url(normalize_url(url))
     opts = {
         "quiet": True, "no_warnings": True, "skip_download": True,
         "noplaylist": True,             # watch?v=..&list=.. tetap dianggap video tunggal

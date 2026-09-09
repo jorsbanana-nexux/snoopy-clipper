@@ -98,9 +98,13 @@ THUMBNAIL = env("THUMBNAIL", "1") == "1"
 # 1 = pakai transkrip bawaan platform (instan) untuk otak + unduh video HANYA
 #     rentang klip terpilih. 0 = jalur klasik (unduh penuh + whisper penuh).
 CAPTIONS_FIRST = env("CAPTIONS_FIRST", "1") == "1"
-# Video lebih panjang dari ini (detik): analisis visual frame DILEWATI di jalur cepat
-# (otak tetap baca transkrip lengkap; hemat waktu & bandwidth besar).
-BRAIN_FRAMES_MAX_DURATION = float(env("BRAIN_FRAMES_MAX_DURATION", "1200"))
+# Video lebih panjang dari ini (detik): analisis visual frame DILEWATI di jalur cepat.
+#
+# Penting: caption-first hanya terasa cepat bila kita TIDAK mengunduh lalu
+# mendekode seluruh video sebelum memilih momen. Empat menit masih cukup untuk
+# memberi konteks visual video pendek; di atas itu, transkrip dipakai dulu dan
+# video diambil hanya untuk rentang momen yang benar-benar dipilih.
+BRAIN_FRAMES_MAX_DURATION = float(env("BRAIN_FRAMES_MAX_DURATION", "240"))
 
 # ============ PEMILIHAN MOMEN ============
 MAX_CLIPS = int(env("MAX_CLIPS", "100"))  # PLAFON pengaman saja — jumlah klip = keputusan otak AI sesuai kualitas video
