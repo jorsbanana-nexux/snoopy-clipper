@@ -86,6 +86,7 @@ h2 { font-size: 18px; margin: 40px 0 14px; color: var(--text); }
 .clip-info b { font-size: 14px; }
 .clip-info .score { color: var(--acc); font-weight: 700; }
 .clip-info span { color: var(--muted); }
+.clip-info .hook { color: var(--text); line-height: 1.35; }
 .dl {
   margin-top: 8px; text-align: center; text-decoration: none;
   padding: 9px 0; border-radius: 9px; font-weight: 700; font-size: 13px;
