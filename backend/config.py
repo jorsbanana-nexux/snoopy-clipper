@@ -12,8 +12,9 @@ LIBRARY_DIR = BASE_DIR / "library"      # klip jadi siap download + meta.json
 JOBS_DIR = BASE_DIR / "jobs"           # progress job + file kerja sementara
 MODELS_DIR = BASE_DIR / "models"        # model onnx face detector (auto-download)
 FRONTEND_DIR = BASE_DIR / "frontend"
+LOGS_DIR = BASE_DIR / "logs"            # log job JSONL (observability ringan)
 
-for d in (DOWNLOADS_DIR, LIBRARY_DIR, JOBS_DIR, MODELS_DIR):
+for d in (DOWNLOADS_DIR, LIBRARY_DIR, JOBS_DIR, MODELS_DIR, LOGS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -42,6 +43,16 @@ _load_env()
 def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
+
+# ============ SIAP-PRODUK: auth ringan + kuota harian ============
+# API_KEY kosong = mode lokal LAMA (tanpa login, semua request diizinkan).
+# Diisi = wajib kirim header `X-API-Key` (atau ?key=) utk endpoint /api/clip,
+# /api/jobs, /api/library — tanpa ini, deploy publik = orang asing memakai
+# Gemini key & CPU kita gratis. Frontend otomatis minta kunci & menyimpannya.
+API_KEY = env("API_KEY")
+# Batas menit video-per-hari (server UTC). 0 = tanpa batas (mode lokal).
+# Fondasi billing: diisi saat dipakai orang lain / hosting publik.
+DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 
 # ============ COOKIES (jaga-jaga blokir YouTube "confirm you're not a bot") ============
 # Cara 1 (termudah): isi nama browser yang dipakai login YouTube -> cookie dibaca langsung.
