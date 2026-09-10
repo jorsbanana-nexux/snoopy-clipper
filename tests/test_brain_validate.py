@@ -58,3 +58,69 @@ def test_prompt_v7_has_cross_verification_step():
     prompt = brain._build_prompt(tr, 60.0, None, 0)
     assert "LANGKAH 4" in prompt and "VERIFIKASI SILANG" in prompt
     assert "TIGA DETIK PERTAMA" in prompt
+
+
+# ---------------- v8: NATURALLY LOOPABLE CONTENT ----------------
+
+def test_validate_loop_flag_passes_through():
+    """Klip loop alami: flag + loop_note mengalir, klip normal tetap normal."""
+    lines = [{"start": 5.0, "end": 45.0, "text": "isi"}]
+    out = brain._validate(
+        [{"start": 5.0, "end": 45.0, "title": "loop", "score": 9,
+          "loop": True, "loop_note": "hook '...kenapa dia dipenjara' + bridge 'dan kamu tak akan percaya'"},
+         {"start": 50.0, "end": 80.0, "title": "biasa", "score": 8}],
+        [], 100.0, lines=lines + [{"start": 50.0, "end": 80.0, "text": "b"}],
+    )
+    loop = next(m for m in out if m["title"] == "loop")
+    biasa = next(m for m in out if m["title"] == "biasa")
+    assert loop["loop"] is True and "dipenjara" in loop["loop_note"]
+    assert biasa["loop"] is False and biasa.get("loop_note", "") == ""
+
+
+def test_loop_timestamp_is_trusted_not_dragged():
+    """Klip loop: timestamp kata-presisi DIPERCAYA — snap toleransi 0.8s
+    hanya merapikan noise, TIDAK menggeser ke batas yang lebih jauh.
+    Klip normal (tol 2.0s) tetap disentak seperti biasa."""
+    words = [{"start": 12.0, "end": 40.0, "text": "a"},
+             {"start": 40.0, "end": 52.0, "text": "b"}]
+    # otak loop memilih potongan kata-presisi 1.0s dari batas kata terdekat:
+    # tol 0.8 -> DIPERCAYA, tidak digeser (bukan noise, memang intonasinya di situ)
+    out_loop = brain._validate(
+        [{"start": 13.0, "end": 51.0, "title": "loop", "score": 9, "loop": True}],
+        words, 100.0,
+    )
+    assert out_loop[0]["start"] == 13.0 and out_loop[0]["end"] == 51.0
+
+    # non-loop, potongan yang sama: tol 2.0 -> disentak ke batas kata
+    out_biasa = brain._validate(
+        [{"start": 13.0, "end": 51.0, "title": "biasa", "score": 8}],
+        words, 100.0,
+    )
+    assert out_biasa[0]["start"] == 12.0 and out_biasa[0]["end"] == 52.0
+
+    # noise float kecil (<0.8s) tetap dirapikan walaupun loop
+    out_rapi = brain._validate(
+        [{"start": 12.05, "end": 51.96, "title": "loop", "score": 9, "loop": True}],
+        words, 100.0,
+    )
+    assert out_rapi[0]["start"] == 12.0 and out_rapi[0]["end"] == 52.0
+
+
+def test_prompt_v8_has_loop_rule_and_schema():
+    """Prompt wajib mengajarkan loop alami (tanpa dipaksa) + field JSON-nya."""
+    tr = {"lines": [{"start": 0.0, "end": 2.0, "text": "tes"}], "language": "id"}
+    p = brain._build_prompt(tr, 60.0, [], None, meta={"title": "t", "uploader": "u"})
+    assert "LOOP ALAMI" in p and "JANGAN DIPAKSA" in p
+    assert "BRIDGE" in p and "CLIFFHANGER" in p
+    assert '"loop": false' in p and '"loop_note"' in p
+    assert "OTAK SNOOPY v8" in p
+
+
+def test_clip_meta_carries_loop_fields():
+    """Field loop ikut sampai metadata klip (UI/API) — terlihat & terpakai."""
+    from backend import pipeline
+    m = {"start": 1.0, "end": 30.0, "title": "loop", "hook": "h", "score": 9,
+         "loop": True, "loop_note": "bridge: 'dan kamu tak akan percaya'"}
+    meta = pipeline._clip_meta("clip_01", m, 720, 1280, {"id": "vid"})
+    assert meta["loop"] is True
+    assert "tak akan percaya" in meta["loop_note"]

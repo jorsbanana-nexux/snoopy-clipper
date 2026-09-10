@@ -258,7 +258,7 @@ def extract_frames(video_path, out_dir, duration: float) -> float:
 
 
 def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
-                out_path, workdir, on_progress=None, bgm=None):
+                out_path, workdir, on_progress=None, bgm=None, loop=False):
     """
     Render satu klip (satu pass): crop pintar + motion blur + subtitle burn + encode.
     Motion blur diaplikasikan SEBELUM subtitle supaya teks selalu tajam.
@@ -282,8 +282,14 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
 
     if bgm:  # BGM: satu pass yang sama, volume rendah + fade — nyaris nol waktu tambah
         vol = float(bgm.get("volume", 0.15))
-        fin = min(0.8, clip_dur / 4)
-        fout_d = min(1.2, clip_dur / 4)
+        if loop:
+            # Klip LOOP ALAMI: fade BGM pendek-suprapat supaya jahitan loop
+            # nyaris tak terasa — penonton memutar ulang tanpa sadar sudah balik awal.
+            fin = min(0.35, clip_dur / 8)
+            fout_d = min(0.35, clip_dur / 8)
+        else:
+            fin = min(0.8, clip_dur / 4)
+            fout_d = min(1.2, clip_dur / 4)
         # apad + duration=longest: suara sumber bisa LEBIH PENDEK dari video
         # (potongan rentang keyframe: video punya padding beberapa detik)
         # -> tanpa ini audio & BGM mati mendadak di ekor klip. apad menjamin

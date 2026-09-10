@@ -1,5 +1,9 @@
 """
-OTAK SNOOPY v7 — ELITE + TERLATIH + MULTIMODAL + VERIFIKASI SILANG: berpikir KONTEKS DULU, baru memilih.
+OTAK SNOOPY v8 — ELITE + TERLATIH + MULTIMODAL + VERIFIKASI SILANG + LOOP ALAMI:
+berpikir KONTEKS DULU, baru memilih. BARU di v8: deteksi NATURALLY LOOPABLE
+CONTENT — klip yang saat diputar ulang terasa seamless (hook menggantung ->
+isi padat -> cliffhanger -> bridge yang tata bahasanya nyambung balik ke hook).
+TIDAK DIPAKSA: struktur loop hanya ditandai kalau BENAR-BENAR ada di transkrip.
 JUMLAH klip = keputusan otak sesuai kualitas video (bukan kuota tetap):
 plafon config.MAX_CLIPS (100) hanyalah pengaman, bukan target.
 Dikirim: judul + channel + transkrip (+ frame urut waktu) ke Gemini ->
@@ -24,7 +28,7 @@ from . import config
 
 PROMPT = """Hari ini: {today} — nilai & tulis dengan kesadaran zaman SEKARANG, bukan masa lalu.
 
-Kamu adalah OTAK SNOOPY v7 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
+Kamu adalah OTAK SNOOPY v8 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
 
 KONTEKS VIDEO:
 - Judul: {title}
@@ -56,12 +60,14 @@ ATURAN KETAT momen:
 8. Tes akhir untuk tiap kandidat seperti editor legendaris: "kalau klip ini diunggah, apakah orang SHARE / SAVE / komentar 'apasih'?" Kalau tidak ada yang akan, jangan pilih. Utamakan momen yang menonton sekali lalu menonton ulang (loop).
 9. RATAKAN PENCARIAN: baca transkrip HABIS dari awal sampai akhir secara sistematis — JANGAN menumpuk kandidat di awal video. Momen terbaik bisa di sepertiga akhir; klip dari bagian belakang sering justru paling segar.
 10. HIDUP & BERDAGING: tulis judul/hook dengan bahasa yang hidup & spesifik ke momennya (kutipan nyata, angka nyata, nama nyata) — hindari generik seperti "momen menarik". Kalau momennya nyambung dengan isu/berita/trend terkini, angkat; kalau sepenuhnya abadi (evergreen), tulis "evergreen" di "trend". Isi "audience" dengan segmen penonton yang paling bakal SHARE klip ini.
+11. LOOP ALAMI (naturally loopable) — nilai tiap kandidat dengan jeli, tapi tandai "loop": true HANYA kalau keempat strukturnya BENAR-BENAR ada di transkrip, JANGAN DIPAKSA (video tanpa struktur loop = klip normal, "loop": false — klip normal TIDAK lebih rendah derajatnya): (a) HOOK di 0-3 detik pertama: kalimat pembuka yang MENGANTUNG atau langsung masuk inti tanpa salam (contoh: "...alasan kenapa cowok ini dipenjara."); (b) isi/cerita yang menjawab hook secara PADAT; (c) CLIFFHANGER menjelang akhir: berhenti TEPAT SEBELUM kesimpulan akhir diberikan; (d) BRIDGE di detik terakhir: kalimat penutup yang menggantung dan secara TATA BAHASA LANGSUNG MENYAMBUNG ke kalimat hook awal — kalau kalimat terakhir digabung dengan kalimat pertama, harus terdengar seperti SATU kalimat yang wajar (contoh: hook "...ini alasan kenapa dia dipenjara" + bridge "dan kamu tidak akan percaya" -> "...dipenjara, dan kamu tidak akan percaya" = nyambung alami). Untuk kandidat loop: pilih timestamp KATA yang PERSIS — mulai/berhenti tepat di batas kata & perhatikan INTONASI (jangan potong di tengah kata atau di tengah napas) supaya saat video di-loop dari awal, intonasinya menyambung alami. Isi "loop_note" dengan jembatan kalimatnya (maks 1 kalimat). Kenapa penting: klip loop = penonton menonton ulang tanpa sadar = rewatches & watch-time naik = algoritme mendorong; dan ekspresi wajah/emosi asli pembicara bikin interaksi jauh lebih tinggi.
+
 12. TIGA DETIK PERTAMA = hidup-mati klip: kalimat pertama yang terdengar di detik 0-3 harus LANGSUNG menarik (pertanyaan, klaim berani, angka, reaksi). Jangan pernah mulai klip dari sapaan, "oke jadi", jeda, atau setengah kalimat — penonton scroll sebelum 3 detik.
 
 13. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
 
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy"}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "loop": false, "loop_note": ""}}]}}"""
 
 
 def _today() -> str:
@@ -324,10 +330,12 @@ def _extract_moments(raw) -> list:
     return []
 
 
-def _snap(t: float, words: list, mode: str, lines: list = None) -> float:
+def _snap(t: float, words: list, mode: str, lines: list = None, tol: float = 2.0) -> float:
     """Geser timestamp ke batas kata terdekat (awal kata utk start, akhir kata
     utk end). Jalur caption (words kosong): pakai batas BARIS/kalimat —
-    potongan TIDAK BOLEH nyangkal di tengah kalimat atau memotong pay-off."""
+    potongan TIDAK BOLEH nyangkal di tengah kalimat atau memotong pay-off.
+    tol kecil (klip loop) = rapikan noise float saja, JANGAN geser potongan
+    kata-presisi yang sudah dipilih otak."""
     if words:
         cands = [w["start"] for w in words] if mode == "start" else [w["end"] for w in words]
     elif lines:
@@ -335,7 +343,7 @@ def _snap(t: float, words: list, mode: str, lines: list = None) -> float:
     else:
         return t
     best = min(cands, key=lambda c: abs(c - t))
-    return best if abs(best - t) <= 2.0 else t
+    return best if abs(best - t) <= tol else t
 
 
 def _validate(moments: list, words: list, duration: float, lines: list = None) -> list:
@@ -346,8 +354,12 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             e = float(m["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        s = max(0.0, _snap(s, words, "start", lines))
-        e = min(duration, _snap(e, words, "end", lines))
+        is_loop = bool(m.get("loop", False))
+        # klip loop: snap toleransi ketat (0.8s) — timestamp kata-presisi dari
+        # otak DIPERCAYA; snap hanya merapikan noise, bukan menggeser potongan
+        tol = 0.8 if is_loop else 2.0
+        s = max(0.0, _snap(s, words, "start", lines, tol))
+        e = min(duration, _snap(e, words, "end", lines, tol))
         if e - s < config.MIN_CLIP_SEC * 0.6:
             continue  # terlalu pendek setelah snap -> buang
         if e - s > config.MAX_CLIP_SEC:
@@ -364,6 +376,8 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             "trend": str(m.get("trend", ""))[:120],
             "audience": str(m.get("audience", ""))[:120],
             "bgm_mood": str(m.get("bgm_mood", ""))[:20],
+            "loop": is_loop,
+            "loop_note": str(m.get("loop_note", ""))[:200],
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
     return out[: config.MAX_CLIPS]

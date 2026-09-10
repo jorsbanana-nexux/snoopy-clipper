@@ -500,7 +500,7 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             bgm_track = _bgm_track(job_id, m) if config.BGM else None
             cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
-                               bgm=bgm_track)
+                               bgm=bgm_track, loop=bool(m.get("loop")))
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
                 thumbnail.make_thumb(video_path, start, end, out_path, vdir / f"{clip_id}.jpg")
@@ -627,7 +627,7 @@ def _render_ranged(job_id, info, moments, full_words):
             bgm_track = _bgm_track(job_id, m) if config.BGM else None
             cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
                                src_w, src_h, out_path, workdir, on_progress=on_progress,
-                               bgm=bgm_track)
+                               bgm=bgm_track, loop=bool(m.get("loop")))
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
                 thumbnail.make_thumb(seg_path, 0.0, seg_dur, out_path, vdir / f"{clip_id}.jpg")
@@ -725,7 +725,8 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "id": clip_id, "title": m["title"], "hook": m.get("hook", ""),
         "score": m.get("score", 0), "reason": m.get("reason", ""),
         "trend": m.get("trend", ""), "audience": m.get("audience", ""),
-        "bgm": bgm_credit,
+        "bgm": bgm_credit, "loop": bool(m.get("loop", False)),
+        "loop_note": str(m.get("loop_note", ""))[:160],
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,
@@ -749,5 +750,13 @@ def _finish(job_id, info):
         for f in workdir.iterdir():
             f.unlink()
         workdir.rmdir()
+    if clips:
+        n_loop = sum(1 for c in clips if c.get("loop"))
+        msg = f"Selesai! {len(clips)} klip siap diunduh" + (
+            f" ({n_loop} loop alami — penonton cenderung memutar ulang)." if n_loop else ".")
+    else:
+        msg = ("Selesai — otak TIDAK menemukan momen yang layak dijadikan klip "
+               "(standar viral ketat: kontennya datar/terlalu pendek). Coba video lain — "
+               "bukan semua video harus menghasilkan klip.")
     _update(job_id, status="done", step="done", pct=100, eta_seconds=0,
-            message=f"Selesai! {len(clips)} klip siap diunduh.", video_id=info["id"])
+            message=msg, video_id=info["id"])
