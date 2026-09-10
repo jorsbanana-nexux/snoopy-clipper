@@ -7,7 +7,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, pipeline, library, quota
+from . import config, pipeline, library, quota, publisher
+
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 # Job sisa sesi lama (server ter-kill/restart saat job jalan) tidak boleh
 # nanggung "running" selamanya di UI — pulihkan begitu server hidup.
@@ -101,6 +103,56 @@ def get_stats(_=Depends(require_key)):
         "quota": quota.usage(),
         "ts": _time.time(),
     }
+
+
+# ---------------- AUTO-POST YouTube Shorts ----------------
+
+@app.get("/api/publish/authorize")
+def publish_authorize(_=Depends(require_key)):
+    """Buka URL ini di browser -> setujui akses YouTube -> token tersimpan."""
+    if not publisher.configured():
+        raise HTTPException(400, "YT_CLIENT_ID/SECRET belum diisi di .env (lihat README publish).")
+    return {"url": publisher.authorize_url()}
+
+
+@app.get("/api/publish/callback")
+def publish_callback(code: str = "", error: str = ""):
+    """Google mengarah kembali ke sini. Tidak pakai kunci — code sekali-pakai."""
+    if error or not code:
+        return HTMLResponse(
+            "<h3>Izin YouTube ditolak/batal.</h3><p>reload Snoopy dan coba lagi.</p>",
+            status_code=400)
+    try:
+        publisher.exchange_code(code)
+    except Exception as e:
+        return HTMLResponse(f"<h3>Gagal menukar kode izin.</h3><p>{e}</p>", status_code=400)
+    return RedirectResponse("/", status_code=302)  # kembali ke UI, token sudah tersimpan
+
+
+class PublishRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+
+
+@app.post("/api/publish/{video_id}/{clip_id}")
+def publish_clip(video_id: str, clip_id: str, req: PublishRequest,
+                 _=Depends(require_key)):
+    """Unggah klip ke channel sebagai Shorts; balas URL video."""
+    p = library.clip_path(video_id, clip_id)
+    if not p.exists():
+        raise HTTPException(404, "Klip tidak ditemukan")
+    try:
+        clip = next((c for c in library.load_meta(video_id).get("clips", [])
+                     if c.get("id") == clip_id), {})
+    except Exception:
+        clip = {}
+    title = (req.title or clip.get("title") or p.stem).strip()
+    desc = req.description or (clip.get("hook") or "")
+    try:
+        url = publisher.upload_clip(p, title, desc)
+    except Exception as e:
+        raise HTTPException(502, f"Upload gagal: {e}")
+    return {"url": url, "title": title}
 
 
 @app.get("/api/thumbs/{video_id}/{clip_id}")

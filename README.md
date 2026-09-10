@@ -333,7 +333,13 @@ Yang sudah ada di lapisan siap-produk:
 - **logs/jobs.log** — JSONL ringan (start/done/error + durasi) + `GET /api/stats`
   (jumlah job, klip, rata-rata detik per job) & `GET /api/quota`.
 
-Belum ada (roadmap): login multi-user penuh, pembayaran, auto-post ke platform.
+**Auto-post YouTube Shorts** (sudah ada): isi `YT_CLIENT_ID/SECRET` di .env
+(lihat petunjuk di .env.example), lalu di kartu klip klik **Publish ke YT** —
+sistem otomatis membuka tab izin Google sekali, setelah itu klip terunggah
+sebagai Shorts. TikTok/IG menyusul: TikTok Content Posting API butuh audit
+aplikasi (mingguan), IG Graph API butuh akun business + review Meta.
+
+Belum ada (roadmap): login multi-user penuh, pembayaran.
 
 ## Roadmap
 

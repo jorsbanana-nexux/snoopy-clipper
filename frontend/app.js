@@ -151,6 +151,36 @@ function renderJob(job) {
   }
 }
 
+// ============ Publish ke YouTube Shorts ============
+async function publishClip(btn) {
+  btn.disabled = true; btn.textContent = "Mengunggah…";
+  try {
+    const res = await api(`/api/publish/${btn.dataset.v}/${btn.dataset.c}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: btn.dataset.t, description: btn.dataset.h }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      const msg = e.detail || "Gagal upload";
+      if (String(msg).includes("authorize")) {
+        // belum pernah izinkan YouTube -> buka tab izin Google otomatis
+        const a = await (await api("/api/publish/authorize")).json().catch(() => ({}));
+        if (a.url) { window.open(a.url, "_blank"); alert("Tab izin YouTube terbuka — setujui aksesnya lalu klik Publish lagi di sini."); }
+        else alert(msg);
+      } else alert(msg);
+      btn.disabled = false; btn.textContent = "Publish ke YT";
+      return;
+    }
+    const { url } = await res.json();
+    btn.textContent = "Tayang ✓";
+    window.open(url, "_blank");
+  } catch {
+    alert("Tidak bisa menghubungi server.");
+    btn.disabled = false; btn.textContent = "Publish ke YT";
+  }
+}
+
 async function loadLibrary() {
   let data;
   try {
@@ -179,10 +209,13 @@ async function loadLibrary() {
               <span>${esc(c.duration)}s · ${esc(c.width)}x${esc(c.height)}</span>
               ${c.bgm ? `<span class="bgm-credit">${esc(c.bgm)}</span>` : ""}
               <a class="dl" href="${apiAsset(c.path)}" download>Download MP4</a>
+              <button class="dl pub" data-v="${esc(v.id)}" data-c="${esc(c.id)}"
+                      data-t="${esc(c.title)}" data-h="${esc(c.hook || "")}">Publish ke YT</button>
             </div>
           </div>`).join("")}
       </div>
     </div>`).join("");
+  wrap.querySelectorAll(".pub").forEach((b) => b.addEventListener("click", () => publishClip(b)));
 }
 
 ensureKey().then(loadLibrary);
