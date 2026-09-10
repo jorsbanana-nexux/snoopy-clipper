@@ -5,6 +5,10 @@ sys.path.insert(0, ".")
 
 from backend import config, diarize
 
+# Modul test lain bisa ter-import LEBIH DULU (urutan abjad) — jangan gantung
+# pada os.environ saat import: set config langsung supaya tes ini selalu jalan.
+config.DIARIZE = True
+
 
 def _tr():
     return {

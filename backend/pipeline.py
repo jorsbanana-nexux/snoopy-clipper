@@ -10,7 +10,8 @@ JALUR CEPAT (default, CAPTIONS_FIRST=1, video dari URL):
 JALUR KLASIK (fallback: platform tanpa transkrip / file lokal):
   audio-only -> whisper full -> Gemini -> unduh rentang / video penuh -> render.
 
-Analisis visual (frame) tetap jalan untuk video <= BRAIN_FRAMES_MAX_DURATION.
+Analisis visual jalan utk video pendek (bahan render dipakai) dan video panjang
+(lewat proxy visual hemat: kualitas terburuk, tanpa audio — hanya utk dilihat otak).
 
 Progress + ETA realtime dikoreksi otomatis dari kecepatan aktual (drift).
 """
@@ -208,8 +209,11 @@ def _run(job_id):
                 moments = _brain(job_id, caps, duration, frames)
                 _render_absolute(job_id, info, moments, video_path, full_words=None)
             else:
-                # video panjang: TANPA unduh full — otak dulu, lalu unduh hanya rentang
-                moments = _brain(job_id, caps, duration, None)
+                # video panjang: TANPA unduh full — otak dulu, lalu unduh hanya rentang.
+                # Proxy visual (opsional, hemat): otak TETAP melihat video panjang.
+                frames = (_frames_proxy(job_id, info, duration)
+                          if config.BRAIN_FRAMES_PROXY else None)
+                moments = _brain(job_id, caps, duration, frames)
                 _render_ranged(job_id, info, moments, full_words=None)
         else:
             if use_frames:
@@ -220,9 +224,12 @@ def _run(job_id):
                 _render_absolute(job_id, info, moments, video_path,
                                  full_words=transcript["words"])
             else:
-                # fallback panjang tanpa transkrip: audio-only -> whisper -> unduh rentang
+                # fallback panjang tanpa transkrip: audio-only -> whisper -> unduh rentang.
+                # Otak tetap MELIHAT lewat proxy visual hemat (bukan buta teks).
+                frames = (_frames_proxy(job_id, info, duration)
+                          if config.BRAIN_FRAMES_PROXY else None)
                 transcript = _transcribe_audio_only(job_id, info, duration)
-                moments = _brain(job_id, transcript, duration, None)
+                moments = _brain(job_id, transcript, duration, frames)
                 _render_ranged(job_id, info, moments, full_words=transcript["words"])
 
         _finish(job_id, info)
@@ -257,6 +264,28 @@ def _frames(job_id, video_path, info, duration):
     frames_dir = config.DOWNLOADS_DIR / f"{info['id']}_frames"
     interval = cutter.extract_frames(video_path, frames_dir, duration)
     return (frames_dir, interval)
+
+
+def _frames_proxy(job_id, info, duration):
+    """Frame untuk video PANJANG tanpa mengunduh video penuh: proxy visual
+    super-hemat (video terburuk, tanpa audio — hanya untuk dilihat otak).
+    Gagal APA PUN -> None: otak lanjut dari teks saja, job TIDAK boleh gagal
+    hanya karena proxy mati (proxy adalah bonus, bukan kewajiban)."""
+    try:
+        base = config.DOWNLOADS_DIR / f"{info['id']}_framesrc"
+        src = downloader.cached_media(base)
+        if src is None:
+            _update(job_id, step="frames", pct=18,
+                    message="Proxy visual hemat (kualitas terburuk, tanpa audio) "
+                            "agar otak MELIHAT video panjang…")
+            src = Path(downloader.download_frames_proxy(_jobs[job_id]["url"], base))
+        frames_dir = config.DOWNLOADS_DIR / f"{info['id']}_frames"
+        interval = cutter.extract_frames(src, frames_dir, duration)
+        return (frames_dir, interval)
+    except Exception as e:
+        traceback.print_exc()
+        _update(job_id, message=f"Proxy visual gagal ({e}) — otak lanjut dari teks saja…")
+        return None
 
 
 def _transcribe_full(job_id, info, video_path, duration) -> dict:

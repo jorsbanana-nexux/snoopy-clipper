@@ -10,3 +10,6 @@ venv/
 node_modules/
 bgm/
 model_health.json
+
+# artefak kerja tes
+thumb_tmp/

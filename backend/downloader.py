@@ -276,6 +276,30 @@ def get_info_local(path) -> dict:
     }
 
 
+def download_frames_proxy(url: str, out_base) -> str:
+    """Unduh video KUALITAS TERBURUK tanpa audio — hanya bahan frame utk otak
+    di video PANJANG (proxy visual super-hemat: 1 jam konten @144p ≈ 15-40 MB,
+    bukan ratusan MB). Hasil tidak dipakai render, hanya dilihat Gemini.
+    Platform tanpa varian video-only -> 'worst' biasa (tetap kecil)."""
+    url = normalize_url(url)
+    opts = {
+        "format": "worstvideo[ext=mp4]/worstvideo/worst",
+        "outtmpl": str(out_base) + ".%(ext)s",
+        "noplaylist": True,
+        "quiet": True, "no_warnings": True, "noprogress": True,
+        **_cookie_opts(),
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        try:
+            return info["requested_downloads"][0]["filepath"]
+        except (KeyError, IndexError, TypeError):
+            for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
+                if c.split(".")[-1].lower() in _MEDIA_EXTENSIONS:
+                    return c
+            raise RuntimeError("Download frame-proxy selesai tapi file tidak ditemukan.")
+
+
 def download_audio(url: str, out_base) -> str:
     """Unduh HANYA audio (m4a/opus) — jalur fallback hemat untuk whisper full."""
     url = normalize_url(url)

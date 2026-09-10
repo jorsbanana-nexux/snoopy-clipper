@@ -105,6 +105,7 @@ CAPTIONS_FIRST = env("CAPTIONS_FIRST", "1") == "1"
 # memberi konteks visual video pendek; di atas itu, transkrip dipakai dulu dan
 # video diambil hanya untuk rentang momen yang benar-benar dipilih.
 BRAIN_FRAMES_MAX_DURATION = float(env("BRAIN_FRAMES_MAX_DURATION", "240"))
+BRAIN_FRAMES_PROXY = env("BRAIN_FRAMES_PROXY", "1") == "1"  # video panjang: proxy visual murah (worst, tanpa audio) utk otak
 
 # ============ PEMILIHAN MOMEN ============
 MAX_CLIPS = int(env("MAX_CLIPS", "100"))  # PLAFON pengaman saja — jumlah klip = keputusan otak AI sesuai kualitas video

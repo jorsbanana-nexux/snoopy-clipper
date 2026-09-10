@@ -1,5 +1,5 @@
 """
-OTAK SNOOPY v4 — ELITE + TERLATIH + MULTIMODAL: berpikir KONTEKS DULU, baru memilih.
+OTAK SNOOPY v7 — ELITE + TERLATIH + MULTIMODAL + VERIFIKASI SILANG: berpikir KONTEKS DULU, baru memilih.
 JUMLAH klip = keputusan otak sesuai kualitas video (bukan kuota tetap):
 plafon config.MAX_CLIPS (100) hanyalah pengaman, bukan target.
 Dikirim: judul + channel + transkrip (+ frame urut waktu) ke Gemini ->
@@ -24,7 +24,7 @@ from . import config
 
 PROMPT = """Hari ini: {today} — nilai & tulis dengan kesadaran zaman SEKARANG, bukan masa lalu.
 
-Kamu adalah OTAK SNOOPY v6 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
+Kamu adalah OTAK SNOOPY v7 — editor video viral LEGENDARIS yang TERLATIH: klip-klipmu menghasilkan ratusan juta views di semua platform (YouTube Shorts, TikTok, Reels) dan SEMUA jenis konten: podcast, wawancara, gaming, storytime, vlog, berita, edukasi, sampai video anak. Kamu hafal di luar kepala psikologi penonton pendek: retensi 2 detik pertama, curiosity gap, trigger share/save/komentar, dan pola klip yang bikin orang berhenti scroll lalu menonton sampai habis dan menonton ulang.
 
 KONTEKS VIDEO:
 - Judul: {title}
@@ -38,10 +38,12 @@ Kesadaran zaman (menambah daging): kamu HIDUP di internet hari ini — tahu beri
 Transkrip video (format [detik_awal-detik_akhir] teks):
 {transcript}
 
-PROSES TERLATIH — kerjakan 3 langkah berurutan, tulis hasilnya ringkas di kolom "analysis" (maks 5 kalimat):
+PROSES TERLATIH — kerjakan 4 langkah berurutan, tulis hasilnya ringkas di kolom "analysis" (maks 5 kalimat):
 LANGKAH 1 — PAHAMI DULU (sebelum memilih): dari judul + channel + transkrip (+frame kalau ada), pahami: siapa saja yang terlibat, topik inti, jenis konten, dan DI MANA "DAGING"-nya. Contoh: judulnya tentang pencurian mobil -> cari di transkrip bagian di mana kisahnya DIBERITAHUKAN dengan detail (siapa, di mana, kapan, berapa rugi, reaksi emosinya) — dagingnya di situ, bukan di basa-basi pembuka.
 LANGKAH 2 — NILAI SEBAGAI PENONTON ACAK yang tidak tahu apa-apa soal video ini: bagian mana yang bikin kaget / "hah, serius?" / kagum / emosi / tertawa / penasaran sampai selesai? Bagian yang akan ditonton ulang dan dikomentari penonton — itulah kandidatnya.
 LANGKAH 3 — PILIH momen terbaik dengan ATURAN KETAT di bawah. Kerjakan dengan standar tertinggi: setiap klip yang kamu pilih harus layak diunggah sendiri dan meraup views.
+
+LANGKAH 4 — VERIFIKASI SILANG (wajib sebelum menjawab): baca ULANG potongan transkrip tiap kandidat persis di rentang start-end yang kamu pilih. Perbaiki: (a) start yang masih di TENGAH kalimat -> geser ke awal kalimat utuh; (b) end yang memotong pay-off/klimaks -> geser sampai kalimat selesai; (c) kandidat yang saat dibaca ulang ternyata basa-basi/iklan/tanpa daging -> BUANG tanpa ragu. Momen yang tidak lolos baca ulang TIDAK BOLEH masuk jawaban.
 
 ATURAN KETAT momen:
 1. Utuh dan berdaging: konteks awal yang LANGSUNG jelas bagi penonton baru -> membangun -> pay-off / klimaks / twist / punchline / kesimpulan kuat. JANGAN basa-basi, iklan, sapaan kosong, atau momen asal tanpa isi.
@@ -54,7 +56,9 @@ ATURAN KETAT momen:
 8. Tes akhir untuk tiap kandidat seperti editor legendaris: "kalau klip ini diunggah, apakah orang SHARE / SAVE / komentar 'apasih'?" Kalau tidak ada yang akan, jangan pilih. Utamakan momen yang menonton sekali lalu menonton ulang (loop).
 9. RATAKAN PENCARIAN: baca transkrip HABIS dari awal sampai akhir secara sistematis — JANGAN menumpuk kandidat di awal video. Momen terbaik bisa di sepertiga akhir; klip dari bagian belakang sering justru paling segar.
 10. HIDUP & BERDAGING: tulis judul/hook dengan bahasa yang hidup & spesifik ke momennya (kutipan nyata, angka nyata, nama nyata) — hindari generik seperti "momen menarik". Kalau momennya nyambung dengan isu/berita/trend terkini, angkat; kalau sepenuhnya abadi (evergreen), tulis "evergreen" di "trend". Isi "audience" dengan segmen penonton yang paling bakal SHARE klip ini.
-11. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
+12. TIGA DETIK PERTAMA = hidup-mati klip: kalimat pertama yang terdengar di detik 0-3 harus LANGSUNG menarik (pertanyaan, klaim berani, angka, reaksi). Jangan pernah mulai klip dari sapaan, "oke jadi", jeda, atau setengah kalimat — penonton scroll sebelum 3 detik.
+
+13. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
 
 Balas HANYA JSON (tanpa teks lain):
 {{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy"}}]}}"""
@@ -72,12 +76,20 @@ def _frames_note(frames, interval):
     n = len(frames)
     half = n // 2
     contoh = ", ".join(f"frame {i} = detik {i * interval:.1f}" for i in (0, half, n - 1))
+    sparse = (interval or 0) >= 30.0
+    padat = (
+        f"Frame diambil SETIAP ±{interval:.0f} detik dari AWAL sampai AKHIR video "
+        f"(contoh: {contoh}) — ini PANORAMA KESELURUHAN, bukan detail per momen. "
+        f"Gunakan untuk: alur adengan/topik, siapa 'pemain utama', gaya visual, "
+        f"dan PERKIRAAN kualitas visual suatu rentang (cari frame TERDEKAT dari "
+        f"rentang kandidat). Jangan klaim detail ekspresi dari frame jarang."
+        if sparse else
+        f"Frame diambil SETIAP ±{interval:.0f} detik — cukup rapat utk menilai "
+        f"ekspresi/reaksi/aksi per momen. Transkrip tetap sumber timestamp utama."
+    )
     return (
-        f"Dikirim juga {n} cuplikan FRAME GAMBAR dalam URUTAN WAKTU yang sama "
-        f"(contoh: {contoh}). Gunakan frame untuk: memahami momen VISUAL "
-        "(ekspresi, reaksi, aksi, kejadian di layar), pergantian adegan, "
-        "dan siapa 'pemain utama' yang sedang dibahas/di-highlight. "
-        "Transkrip tetap sumber timestamp utama; frame menilai kualitas visual."
+        f"Dikirim juga {n} cuplikan FRAME GAMBAR dalam URUTAN WAKTU yang sama. "
+        f"{padat} Frame menilai kualitas visual; transkrip tetap sumber timestamp utama."
     )
 
 
@@ -297,7 +309,8 @@ def find_moments(transcript: dict, duration: float,
     client = genai.Client(api_key=config.GEMINI_API_KEY)
     resp = _generate_with_fallback(client, types, parts)
     raw = json.loads(resp.text)
-    return _validate(_extract_moments(raw), transcript["words"], duration)
+    return _validate(_extract_moments(raw), transcript["words"], duration,
+                      lines=transcript.get("lines"))
 
 
 def _extract_moments(raw) -> list:
@@ -311,16 +324,21 @@ def _extract_moments(raw) -> list:
     return []
 
 
-def _snap(t: float, words: list, mode: str) -> float:
-    """Geser timestamp ke batas kata terdekat (awal kata utk start, akhir kata utk end)."""
-    if not words:
+def _snap(t: float, words: list, mode: str, lines: list = None) -> float:
+    """Geser timestamp ke batas kata terdekat (awal kata utk start, akhir kata
+    utk end). Jalur caption (words kosong): pakai batas BARIS/kalimat —
+    potongan TIDAK BOLEH nyangkal di tengah kalimat atau memotong pay-off."""
+    if words:
+        cands = [w["start"] for w in words] if mode == "start" else [w["end"] for w in words]
+    elif lines:
+        cands = [l["start"] for l in lines] if mode == "start" else [l["end"] for l in lines]
+    else:
         return t
-    cands = [w["start"] for w in words] if mode == "start" else [w["end"] for w in words]
     best = min(cands, key=lambda c: abs(c - t))
     return best if abs(best - t) <= 2.0 else t
 
 
-def _validate(moments: list, words: list, duration: float) -> list:
+def _validate(moments: list, words: list, duration: float, lines: list = None) -> list:
     out = []
     for m in moments:
         try:
@@ -328,8 +346,8 @@ def _validate(moments: list, words: list, duration: float) -> list:
             e = float(m["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        s = max(0.0, _snap(s, words, "start"))
-        e = min(duration, _snap(e, words, "end"))
+        s = max(0.0, _snap(s, words, "start", lines))
+        e = min(duration, _snap(e, words, "end", lines))
         if e - s < config.MIN_CLIP_SEC * 0.6:
             continue  # terlalu pendek setelah snap -> buang
         if e - s > config.MAX_CLIP_SEC:
