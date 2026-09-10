@@ -154,7 +154,8 @@ MOTION_BLUR_STRENGTH = float(env("MOTION_BLUR_STRENGTH", "0.35"))  # 0.1-0.5 (ke
 # SUBTITLE ala clipper profesional (opus.pro / snazo.app — wajar, bukan raksasa):
 SUBTITLE_FONT = env("SUBTITLE_FONT", "Komika Axis")       # gaya komik; install font-nya dulu
 SUBTITLE_CASE = env("SUBTITLE_CASE", "title")            # title = Huruf Besar Di Awal; upper; normal
-SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.047"))  # ±4.7% tinggi frame = wajar (sedikit lebih besar)
+SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.048"))  # ±4.8% tinggi frame (dinaikkan 2%: lebih terbaca di HP)
+SUBTITLE_FADE_MS = int(env("SUBTITLE_FADE_MS", "220"))  # fade-out halus + blur mini saat frasa menutup (0 = potong keras)
 SUBTITLE_Y_FRAC = float(env("SUBTITLE_Y_FRAC", "0.70"))         # ideal 60-75%: area paling bersih dari UI platform
 
 # SMART PLACEMENT (posisi subtitle pintar — tabrakan wajah, UI, teks bawaan, saliency)

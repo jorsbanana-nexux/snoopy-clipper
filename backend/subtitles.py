@@ -163,10 +163,16 @@ def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
                 f"\\t({fede},{fede + hl_ms},\\c&HFFFFFF&)"
                 f"}}{text} "
             )
+        # ---- FADE-OUT SATISFYING: frasa menutup memudar + blur halus ----
+        # (bukan potong keras); durasi dibatasi agar tak makan frasa pendek.
+        dur_ms = int((t1 - t0) * 1000)
+        fo = max(0, min(config.SUBTITLE_FADE_MS, dur_ms))
+        blur_a, blur_b = max(0, dur_ms - fo), dur_ms
         events.append(
             "Dialogue: 0,%s,%s,Snoop,,0,0,0,,"
-            "{\\an5\\pos(%d,%d)\\fs%d\\bord%d}%s"
-            % (_fmt(t0), _fmt(t1), x, y, fs, bord, "".join(parts).strip())
+            "{\\an5\\pos(%d,%d)\\fs%d\\bord%d\\fad(0,%d)\\t(%d,%d,\\blur2.6)}%s"
+            % (_fmt(t0), _fmt(t1), x, y, fs, bord, fo, blur_a, blur_b,
+               "".join(parts).strip())
         )
     return _HEADER.format(w=width, h=height, font=config.SUBTITLE_FONT,
                           fs=fs_base, ol=ol) + "\n".join(events) + "\n"
