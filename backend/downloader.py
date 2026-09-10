@@ -26,6 +26,35 @@ def _cookie_opts() -> dict:
 _MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
 
 
+def _has_video_stream(path) -> bool:
+    """True kalau file media punya stream video (ffprobe, murah ~puluhan ms).
+    Dipakai cache agar file racun (merge rusak / sisa proses ter-kill yang
+    hanya berisi audio) tidak pernah dianggap klip yang sah."""
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=20)
+        return bool(r.stdout.strip())
+    except Exception:
+        return True  # ffprobe tak tersedia -> jangan blokir cache (perilaku lama)
+
+
+def _range_format(h: int) -> str:
+    """Format unduhan RENTANG (download_ranges + force_keyframes): avc1 duluan.
+
+    Terbukti: VP9/AV1 + potongan keyframe bisa menghasilkan file HANYA-AUDIO
+    tanpa error sama sekali (stream video hilang diam-diam) — sedangkan
+    avc1/H.264 selalu utuh. Platform tanpa avc1 turun mulus ke rantai
+    berikutnya (format tak cocok dilewati yt-dlp, bukan error)."""
+    return (
+        f"bestvideo[vcodec^=avc1][height<={h}]+bestaudio/"
+        f"bestvideo[height<={h}]+bestaudio/"
+        f"best[height<={h}]/best"
+    )
+
+
 def cached_media(out_base) -> Path | None:
     """Kembalikan media cache untuk ``out_base`` tanpa mengunci ke .mp4.
 
@@ -41,7 +70,15 @@ def cached_media(out_base) -> Path | None:
         return None
     # MP4 paling kompatibel; bila tidak ada, gunakan berkas terbaru yang nyata.
     choices.sort(key=lambda p: (p.suffix.lower() != ".mp4", -p.stat().st_mtime))
-    return choices[0]
+    for c in choices:  # buang file racun: cache harus bisa sembuh sendiri
+        if _has_video_stream(c):
+            return c
+        try:  # tanpa stream video (merge rusak / sisa kill) -> hapus, unduh ulang
+            c.unlink()
+            print(f"[cache] file racun dibuang (tanpa stream video): {c}", flush=True)
+        except OSError:
+            pass
+    return None
 
 
 def normalize_url(url: str) -> str:
@@ -201,12 +238,10 @@ def download(url: str, out_base, time_range=None, on_progress=None) -> str:
     url = normalize_url(url)
     h = config.MAX_SOURCE_HEIGHT
     if time_range:
-        # unduhan rentang: WAJIB rantai tanpa filter ext (filter [ext=mp4] +
-        # force_keyframes membuat stream video hilang diam-diam di beberapa video)
-        fmt = (
-            f"bestvideo[height<={h}]+bestaudio/"
-            f"best[height<={h}]/best"
-        )
+        # unduhan rentang: avc1 DULUAN (VP9/AV1 + force_keyframes terbukti bisa
+        # menghasilkan file hanya-audio tanpa error) + tanpa filter ext
+        # (filter [ext=mp4] + force_keyframes juga membuat stream video hilang)
+        fmt = _range_format(h)
     else:
         fmt = (
             f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]/"
