@@ -20,7 +20,8 @@ def test_youtube_profile_home_uses_real_videos_tab():
         "https://www.youtube.com/watch?v=abcDEF_123") == "https://www.youtube.com/watch?v=abcDEF_123"
 
 
-def test_cached_media_accepts_non_mp4_and_prefers_mp4(tmp_path):
+def test_cached_media_accepts_non_mp4_and_prefers_mp4(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: True)
     base = tmp_path / "source"
     webm = tmp_path / "source.webm"
     webm.write_bytes(b"x" * 2048)
@@ -95,3 +96,30 @@ def test_duration_zero_falls_back_to_download_and_probe(monkeypatch):
     assert calls["download"] == 1 and calls["probe"] == 1
     assert job["status"] == "done", job["error"]
     assert job["video"]["duration"] == 42.0
+
+
+def test_range_format_prefers_avc1():
+    """Unduhan rentang WAJIB mendahulukan avc1 — VP9 + force_keyframes terbukti
+    bisa menghasilkan file hanya-audio tanpa error (stream video hilang diam-diam)."""
+    fmt = downloader._range_format(1080)
+    assert "vcodec^=avc1" in fmt
+    assert fmt.index("vcodec^=avc1") < fmt.index("best[height<=1080]")
+    # fallback tetap ada utk platform tanpa avc1 (TikTok/dll)
+    assert "best[height<=1080]/best" in fmt
+
+
+def test_cached_media_discards_poisoned_audio_only_file(tmp_path, monkeypatch):
+    """Cache harus sembuh sendiri: file tanpa stream video (merge rusak /
+    sisa proses ter-kill) DIBUANG, bukan dipakai lagi sampai selamanya."""
+    import pytest
+    base = tmp_path / "source"
+    bad = tmp_path / "source.mp4"
+    bad.write_bytes(b"poison" * 500)  # >1024 byte, tanpa stream video
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: False)
+    assert downloader.cached_media(base) is None
+    assert not bad.exists()  # file racun terhapus
+
+    good = tmp_path / "source.mp4"
+    good.write_bytes(b"video" * 500)
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: True)
+    assert downloader.cached_media(base) == good

@@ -310,6 +310,11 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
             "-filter_complex", a_complex,
             "-map", "[v]", "-map", "[aout]", *enc,
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            # WAJIB: batasi durasi OUTPUT. apad menjadikan [a0] tak terbatas
+            # dan amix duration=longest meneruskannya -> tanpa -t di output,
+            # ffmpeg mengencode silence+BGM SELAMANYA (render tak pernah
+            # selesai, file membengkak tanpa batas).
+            "-t", f"{clip_dur:.3f}",
             "-progress", "pipe:1", str(out_path),
         ]
     else:
