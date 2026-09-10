@@ -148,6 +148,7 @@ async function loadLibrary() {
               <b>${esc(c.title)}</b>
               ${c.hook ? `<span class="hook">${esc(c.hook)}</span>` : ""}
               <span class="score">★ ${esc(c.score)}</span>
+              ${c.loop ? `<span class="loop-badge" title="${esc(c.loop_note || "Kalimat akhir menyambung ke hook awal — klip enak diputar ulang.")}">∞ Loop alami</span>` : ""}
               <span>${esc(c.duration)}s · ${esc(c.width)}x${esc(c.height)}</span>
               ${c.bgm ? `<span class="bgm-credit">${esc(c.bgm)}</span>` : ""}
               <a class="dl" href="${apiAsset(c.path)}" download>Download MP4</a>
