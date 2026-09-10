@@ -124,6 +124,17 @@ DIARIZE_MODEL = env("DIARIZE_MODEL", "pyannote/speaker-diarization-3.1")
 # 0 hanya kalau benar-benar mau matikan.
 THUMBNAIL = env("THUMBNAIL", "1") == "1"
 
+# TEKS JUDUL KHUSUS PODCAST (jenis konten lain TIDAK berubah, tetap polos):
+# judul klip dari library -> putih bersih TANPA outline, hanya shadow hitam
+# blur lebar halus; emoji tersenyum kartun selalu menumpang di atas teks;
+# + 1 emoji topik (topic_tag dari otak Gemini) di posisi strategis otomatis.
+# 0 = semua thumbnail polos seperti versi sebelumnya.
+THUMB_TEXT = env("THUMB_TEXT", "1") == "1"
+# Font teks podcast: kosong = auto (file ttf/otf pertama di assets/fonts/ —
+# letakkan Liberica.ttf milikmu di situ — lalu fallback font sistem bold).
+# Isi path utk memaksa font tertentu (mis. /path/Liberica.ttf).
+THUMB_FONT_FILE = env("THUMB_FONT_FILE", "")
+
 # ============ STRATEGI CEPAT (audio/video hanya seperlunya) ============
 # 1 = pakai transkrip bawaan platform (instan) untuk otak + unduh video HANYA
 #     rentang klip terpilih. 0 = jalur klasik (unduh penuh + whisper penuh).

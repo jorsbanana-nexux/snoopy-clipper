@@ -55,7 +55,7 @@ ATURAN KETAT momen:
 3. Durasi tiap potongan {min_clip}-{max_clip} detik. JUMLAH FLEKSIBEL — ikuti kualitas video, BUKAN kuota: pilih SEMUA momen yang benar-benar layak (score 7-10). Jangan paksa jumlah (video datar = sedikit saja), jangan buang momen layak, dan jangan tambah momen asal demi jumlah. Bisa jadi 3, bisa jadi 30 — yang penting setiap klip layak viral. Batas teknis {max_clips} hanyalah pengaman. Tidak boleh saling tumpang tindih.
 4. Gunakan FRAME (kalau dikirim) untuk menilai kualitas visual: ekspresi kuat, reaksi, aksi, kejadian di layar. Momen kuat di teks TAPI lemah/monoton secara visual harus kalah dari momen yang kuat di keduanya.
 5. Adaptif jenis konten: podcast/wawancara -> hot take, kisah pribadi, adu argumen, pengakuan mengejutkan; gaming -> clutch, rage, lucu tak terduga; berita/storytime -> bagian paling mengejutkan dengan detail paling spesifik; edukasi -> tip paling berguna dengan contoh nyata; vlog -> momen paling emosional/tak terduga.
-6. Judul + hook harus memancing "wajib tonton" dalam 1-2 detik TANPA membocorkan pay-off. Semua teks dalam bahasa transkrip.
+6. Judul + hook harus memancing "wajib tonton" dalam 1-2 detik TANPA membocorkan pay-off. BAHASA WAJIB: SEMUA teks keluaran (analysis, judul, hook, reason, trend, audience, loop_note) ditulis dalam BAHASA TRANSKRIP — bahasa yang DIUCAPKAN di video: video English -> semuanya English; video bahasa daerah -> bahasa daerah itu; dst. JANGAN PERNAH default ke bahasa Indonesia kalau videonya berbahasa lain (prompt ini bahasa Indonesia BUKAN berarti jawaban harus bahasa Indonesia) — judul klip ini juga jadi TEKS THUMBNAIL-nya, jadi harus memancing di bahasa penontonnya sendiri.
 7. score 1-10 jujur (10 = wajib tonton). Hanya sertakan momen score 7 ke atas — di bawah itu buang; klip biasa-biasa saja = penonton scroll lewat = views mati.
 8. Tes akhir untuk tiap kandidat seperti editor legendaris: "kalau klip ini diunggah, apakah orang SHARE / SAVE / komentar 'apasih'?" Kalau tidak ada yang akan, jangan pilih. Utamakan momen yang menonton sekali lalu menonton ulang (loop).
 9. RATAKAN PENCARIAN: baca transkrip HABIS dari awal sampai akhir secara sistematis — JANGAN menumpuk kandidat di awal video. Momen terbaik bisa di sepertiga akhir; klip dari bagian belakang sering justru paling segar.
@@ -66,8 +66,10 @@ ATURAN KETAT momen:
 
 13. Setiap klip WAJIB punya "bgm_mood" — musik latar yang MENYAMBUNG dengan genre & suasana klip. Pilih HANYA dari: comedy | upbeat | chill | epic | action | tension | mystery | emotional. Jangan pernah kosong, jangan asal: komedi/pra nk lucu -> comedy; ceria/semangat -> upbeat; santai/reflektif -> chill; besar/megah -> epic; aksi/adrenalin -> action; tegang/konflik -> tension; misteri/penasaran -> mystery; sedih/emosional -> emotional. Kalau ragu di antara dua, pilih yang PALING dekat — BGM harus memperkuat rasa klip, bukan menabraknya.
 
+14. THUMBNAIL PODCAST: setiap klip WAJIB punya "content_type" — jenis konten KLIP INI (bukan video aslinya), pilih HANYA dari: podcast | interview | gaming | storytime | edukasi | vlog | berita | anak | lainnya. PUNYA JUGA "topic_tag" — SATU tag yang PALING NYAMBUNG dengan isi spesifik momen ini (dipakai utk emoji topik di thumbnail, harus akurat), pilih HANYA dari: finance | ekonomi | crypto | investasi | love | fitness | food | tech | gaming | music | travel | edukasi | science | health | sports | drama | motivation | crime | family | cars | nature | business | career | history | berita | politik | spiritual | comedy | psychology | movie | book | ai | law | warning | celebrity. Kalau TIDAK ADA yang benar-benar nyambung dengan topik momen ini, isi "" — JANGAN paksa asal (emoji ngaco = thumbnail jelek).
+
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "loop": false, "loop_note": ""}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": ""}}]}}"""
 
 
 def _today() -> str:
@@ -376,6 +378,8 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             "trend": str(m.get("trend", ""))[:120],
             "audience": str(m.get("audience", ""))[:120],
             "bgm_mood": str(m.get("bgm_mood", ""))[:20],
+            "content_type": str(m.get("content_type", "")).lower()[:16],
+            "topic_tag": str(m.get("topic_tag", "")).lower()[:24],
             "loop": is_loop,
             "loop_note": str(m.get("loop_note", ""))[:200],
         })

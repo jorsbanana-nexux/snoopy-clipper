@@ -549,7 +549,10 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                                bgm=bgm_track, loop=bool(m.get("loop")))
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
-                thumbnail.make_thumb(video_path, start, end, out_path, vdir / f"{clip_id}.jpg")
+                thumbnail.make_thumb(video_path, start, end, out_path, vdir / f"{clip_id}.jpg",
+                                     title=m.get("title", ""),
+                                     content_type=m.get("content_type", ""),
+                                     topic_tag=m.get("topic_tag", ""))
             # DRIFT KALIBRASI: kecepatan nyata klip ini melatih estimasi klip
             # berikutnya — ETA makin akurat sepanjang job (bukan tebakan statis)
             drift = _drift(time.time() - t0, render_est[i])
@@ -676,7 +679,10 @@ def _render_ranged(job_id, info, moments, full_words):
                                bgm=bgm_track, loop=bool(m.get("loop")))
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
-                thumbnail.make_thumb(seg_path, 0.0, seg_dur, out_path, vdir / f"{clip_id}.jpg")
+                thumbnail.make_thumb(seg_path, 0.0, seg_dur, out_path, vdir / f"{clip_id}.jpg",
+                                     title=m.get("title", ""),
+                                     content_type=m.get("content_type", ""),
+                                     topic_tag=m.get("topic_tag", ""))
             # DRIFT KALIBRASI (ranged): kecepatan nyata -> estimasi klip berikut
             drift = _drift(time.time() - t0, rd_est[i])
             for j in range(i + 1, total):
@@ -771,6 +777,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "id": clip_id, "title": m["title"], "hook": m.get("hook", ""),
         "score": m.get("score", 0), "reason": m.get("reason", ""),
         "trend": m.get("trend", ""), "audience": m.get("audience", ""),
+        "content_type": m.get("content_type", ""), "topic_tag": m.get("topic_tag", ""),
         "bgm": bgm_credit, "loop": bool(m.get("loop", False)),
         "loop_note": str(m.get("loop_note", ""))[:160],
         "start": m["start"], "end": m["end"],

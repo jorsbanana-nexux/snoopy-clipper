@@ -62,7 +62,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | **Motion blur ala game** | Aktif HANYA saat kamera pan (tmix), halus, subtitle tetap tajam. |
 | **Output** | MP4 9:16, 1080x1920 (auto 720x1280 kalau sumber kecil), H.264 + AAC, auto-detect encoder GPU. |
 | **ETA realtime** | Estimasi per langkah, dikoreksi otomatis dari kecepatan aktual PC-mu → makin lama makin akurat. |
-| **Thumbnail otomatis WAJIB (default NYALA)** | Setiap klip PASTI punya thumbnail .jpg 1080x1920 — tidak pernah gagal/hilang: rantai fallback 4 lapis (frame wajah terbaik → frame terpajam → frame klip jadi → kartu gradient). Pemilihan frame ala thumbnail profesional: wajah terbesar + mulut terbuka (ekspresi = klik) + ketajaman + exposure waras; crop 9:16 wajah di 40% atas + grade kontras/saturasi/unsharp sama selera klip. TANPA teks → netral semua bahasa (teks = fase 2). Disajikan via `/api/thumbs/<video>/<clip>` + kolom `thumb` di meta; UI/frontend cukup baca meta.json. |
+| **Thumbnail otomatis WAJIB (default NYALA)** | Setiap klip PASTI punya thumbnail .jpg 1080x1920 — tidak pernah gagal/hilang: rantai fallback 4 lapis (frame wajah terbaik → frame terpajam → frame klip jadi → kartu gradient). Pemilihan frame ala thumbnail profesional: wajah terbesar + mulut terbuka (ekspresi = klik) + ketajaman + exposure waras; crop 9:16 wajah di 40% atas + grade kontras/saturasi/unsharp sama selera klip. **Teks judul KHUSUS PODCAST** (klip `content_type` podcast/interview — jenis konten lain tetap polos): judul klip dari library dirender putih bersih TANPA outline, hanya shadow hitam blur lebar 3-lapis yang halus menutupi area teks; ukuran font auto-fit ke layar; emoji kuning kartun tersenyum SELALU menumpang di atas teks; + 1 emoji topik akurat (`topic_tag` dipilih otak Gemini: finansial → 💰, dst — tag tak dikenal = tanpa emoji, tidak pernah ngaco) di posisi strategis otomatis (samping teks / menumpang di ujung baris pertama). Font: letakkan file `.ttf` milikmu (mis. Liberica — pastikan lisensimu valid) di `assets/fonts/`, fallback otomatis ke font sistem bold; emoji asset Noto (Google, OFL) diunduh sekali lalu cache permanen. Gagal apa pun → thumbnail terbit polos (hukum tidak berubah). Disajikan via `/api/thumbs/<video>/<clip>` + kolom `thumb` di meta; UI/frontend cukup baca meta.json. |
 | **Diarization (opsional, default MATI)** | Label pembicara per baris transkrip (pyannote, CPU) → otak tahu SIAPA bicara apa. Monolog otomatis diabaikan (label dibuang). Gagal apa pun (token/library tidak ada) → job jalan normal tanpa label, tidak pernah error. Setup: `pip install -r requirements-diarize.txt`, akun HuggingFace gratis + accept license model, lalu `.env`: `DIARIZE=1` dan `DIARIZE_TOKEN=hf_xxx`. |
 
 ---
@@ -270,6 +270,8 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | Setting | Default | Keterangan |
 |---|---|---|
 | `SUBTITLE_FONT` | Komika Axis | Wajib install font Komika Axis di sistem |
+| `THUMB_TEXT` | 1 | Teks judul thumbnail khusus podcast (konten lain polos); `0` = matikan |
+| `THUMB_FONT_FILE` | (kosong) | Font teks podcast; kosong = auto: `assets/fonts/*.ttf` (letakkan Liberica milikmu) → font sistem bold |
 | `SUBTITLE_CASE` | title | `title` = Huruf Besar Di Awal; `upper`; `normal` |
 | `SUBTITLE_SIZE_FRAC` | 0.047 | Ukuran wajar ±4.7% tinggi frame |
 | `SUBTITLE_Y_FRAC` | 0.70 | Posisi ideal (60-75% = area paling bersih dari UI platform) |
