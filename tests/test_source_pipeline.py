@@ -55,3 +55,43 @@ def test_channel_picker_rejects_live_and_returns_playable_url():
     url, title, why = downloader.pick_channel_best(entries)
     assert (url, title) == ("https://example.test/v", "Video terbaik")
     assert "views" in why
+
+
+def test_duration_zero_falls_back_to_download_and_probe(monkeypatch):
+    """Instagram dsb. tidak melaporkan durasi — job harus UNDUH lalu ukur,
+    bukan gagal. Verifikasi: jalur file lokal dipakai setelahnya."""
+    import threading
+    from backend import pipeline
+
+    calls = {"download": 0, "probe": 0}
+    fake_video = pipeline.config.DOWNLOADS_DIR / "probe_src.mp4"
+    fake_video.write_bytes(b"x" * 2048)
+
+    def fake_download_full(job_id, info):
+        calls["download"] += 1
+        return fake_video
+
+    def fake_get_info_local(path):
+        calls["probe"] += 1
+        return {"id": "probe", "title": "T", "duration": 42.0, "uploader": "u"}
+
+    # matangkan semua langkah SETELAH probe supaya test fokus ke kontrak fallback
+    monkeypatch.setattr(pipeline.downloader, "resolve_url",
+                        lambda u, max_entries=None: ("video", {}, None))
+    monkeypatch.setattr(pipeline.downloader, "get_info", lambda u: {
+        "id": "ig_reel", "title": "Reel", "duration": 0.0, "uploader": "x"})
+    monkeypatch.setattr(pipeline, "_download_full", fake_download_full)
+    monkeypatch.setattr(pipeline.downloader, "get_info_local", fake_get_info_local)
+    monkeypatch.setattr(pipeline, "_transcribe_full",
+                        lambda jid, info, path, dur: {"lines": [], "words": [], "language": "id"})
+    monkeypatch.setattr(pipeline, "_frames", lambda jid, vp, info, dur: None)
+    monkeypatch.setattr(pipeline, "_brain", lambda jid, tr, dur, fr: [])
+    monkeypatch.setattr(pipeline, "_render_absolute",
+                        lambda jid, info, m, vp, full_words: None)
+
+    job_id = pipeline.create_job("https://www.instagram.com/reel/xyz123/")
+    pipeline._queue.join()  # tunggu worker selesai
+    job = pipeline.get_job(job_id)
+    assert calls["download"] == 1 and calls["probe"] == 1
+    assert job["status"] == "done", job["error"]
+    assert job["video"]["duration"] == 42.0

@@ -173,7 +173,17 @@ def _run(job_id):
         duration = info["duration"]
         _jobs[job_id]["info"] = info  # konteks utk otak v3 (judul/channel/deteksi anak)
         if duration <= 0:
-            raise RuntimeError("Durasi video tidak terbaca — coba URL lain.")
+            # Banyak platform (Instagram Reels, dsb.) TIDAK melaporkan durasi
+            # di metadata. Unduh videonya (umumnya pendek), ukur pakai ffprobe,
+            # lalu lanjut di jalur file lokal — job TIDAK lagi gagal karenanya.
+            _update(job_id, pct=4,
+                    message="Durasi tidak dilaporkan platform — mengunduh dulu, lalu mengukur…")
+            video_path = _download_full(job_id, info)
+            duration = downloader.get_info_local(video_path)["duration"]
+            if duration <= 0:
+                raise RuntimeError("Durasi video tidak terbaca — coba URL lain.")
+            info["duration"] = duration
+            local = str(video_path)
         _update(job_id, video=info, pct=5,
                 message=f"Video: {info['title']} ({int(duration // 60)}m {int(duration % 60)}d)")
 
@@ -235,7 +245,15 @@ def _run(job_id):
         _finish(job_id, info)
     except Exception as e:
         traceback.print_exc()
-        _update(job_id, status="error", message=f"Gagal: {e}", error=str(e))
+        msg = f"Gagal: {e}"
+        s = str(e).lower()
+        if ("sign in" in s or "login required" in s or "cookies" in s
+                or "not available" in s or "age" in s):
+            # Video anak (made for kids), region-terkunci, atau bot-check YouTube
+            # butuh cookie login — arahkan user ke solusinya, bukan error mentah.
+            msg += (" — beberapa video (mis. konten anak/terkunci) butuh login: "
+                    "isi COOKIES_FROM_BROWSER=chrome di file .env")
+        _update(job_id, status="error", message=msg, error=str(e))
 
 
 # ---------------- langkah-langkah ----------------
