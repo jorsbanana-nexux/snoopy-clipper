@@ -67,10 +67,17 @@ API_KEY = env("API_KEY")
 DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 
 # ============ COOKIES (jaga-jaga blokir YouTube "confirm you're not a bot") ============
-# Cara 1 (termudah): isi nama browser yang dipakai login YouTube -> cookie dibaca langsung.
+# Cara 1 (termudah, TAPI rawan di Windows): isi nama browser yang dipakai login
+#   YouTube -> cookie dibaca langsung dari profilnya.
 #   COOKIES_FROM_BROWSER=chrome   (pilihan: chrome / edge / firefox / brave / opera)
-# Cara 2: ekspor cookies.txt (ekstensi "Get cookies.txt LOCALLY" saat buka youtube.com),
-#   taruh file bernama cookies.txt di root project -> terdeteksi otomatis.
+#   Windows mengunci file Cookies-nya SELAMA browser itu terbuka -> yt-dlp gagal
+#   baca ("Could not copy Chrome cookie database", yt-dlp issue #7271). Server
+#   otomatis fallback jalan TANPA cookie sama sekali saat ini terjadi (video
+#   publik biasanya tetap berhasil) -- tapi kalau video butuh login/umur 18+,
+#   TUTUP browser dulu sebelum GetClips, atau pakai Cara 2 di bawah (lebih stabil).
+# Cara 2 (lebih stabil, tak perlu tutup browser): ekspor cookies.txt (ekstensi
+#   "Get cookies.txt LOCALLY" saat buka youtube.com), taruh file bernama
+#   cookies.txt di root project -> terdeteksi otomatis.
 COOKIES_FROM_BROWSER = env("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE = env("COOKIES_FILE", "")
 

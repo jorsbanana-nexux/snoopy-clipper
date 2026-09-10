@@ -12,8 +12,13 @@ import yt_dlp
 from . import config
 
 
+_cookies_broken = False  # cache: sekali gagal, jangan coba baca cookie browser lagi
+
+
 def _cookie_opts() -> dict:
     """Opsi cookie yt-dlp — aktif hanya kalau diaktifkan (jaga-jaga blokir YouTube)."""
+    if _cookies_broken:
+        return {}
     if config.COOKIES_FROM_BROWSER:
         # baca langsung dari profil browser — tanpa file apa pun
         return {"cookiesfrombrowser": (config.COOKIES_FROM_BROWSER,)}
@@ -21,6 +26,30 @@ def _cookie_opts() -> dict:
     if cf.exists():
         return {"cookiefile": str(cf)}
     return {}
+
+
+def _extract(opts: dict, url: str, download: bool = False) -> dict:
+    """extract_info dengan fallback otomatis kalau cookie-dari-browser gagal
+    dibaca — pesan yt-dlp bervariasi tergantung sebab (Chrome sedang terbuka
+    & mengunci Cookies.sqlite di Windows/issue #7271, browser tak terpasang,
+    keyring tak tersedia, dst) tapi SELALU menyebut "cookie" di pesannya.
+    Video publik biasanya tetap bisa diunduh TANPA cookie sama sekali, jadi
+    daripada seluruh job gagal, coba ulang sekali tanpa cookie lalu ingat
+    untuk sisa proses ini (hemat, tak mengulang cek tiap panggilan)."""
+    global _cookies_broken
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=download)
+    except yt_dlp.utils.DownloadError as e:
+        msg = str(e).lower()
+        has_cookie_opt = bool(opts.get("cookiesfrombrowser") or opts.get("cookiefile"))
+        if has_cookie_opt and "cookie" in msg:
+            _cookies_broken = True
+            retry_opts = {k: v for k, v in opts.items()
+                         if k not in ("cookiesfrombrowser", "cookiefile")}
+            with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                return ydl.extract_info(url, download=download)
+        raise
 
 
 _MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
@@ -153,8 +182,7 @@ def get_info(url: str) -> dict:
         "noplaylist": True,
         **_cookie_opts(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = _extract(opts, url, download=False)
     return {
         "id": info.get("id") or info.get("webpage_url", "video"),
         "title": info.get("title") or "Untitled",
@@ -176,8 +204,7 @@ def resolve_url(url: str, max_entries=None):
         "playlistend": int(max_entries or config.CHANNEL_MAX_CANDIDATES),
         **_cookie_opts(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = _extract(opts, url, download=False)
     if info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
         return "channel", {
             "title": info.get("title") or info.get("uploader")
@@ -280,14 +307,13 @@ def download(url: str, out_base, time_range=None, on_progress=None) -> str:
             except Exception:
                 pass
         opts["progress_hooks"] = [_hook]
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        try:
-            return info["requested_downloads"][0]["filepath"]
-        except (KeyError, IndexError, TypeError):
-            # fallback: cari file dengan prefix out_base
-            for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
-                if c.endswith((".mp4", ".mkv", ".webm")):
+    info = _extract(opts, url, download=True)
+    try:
+        return info["requested_downloads"][0]["filepath"]
+    except (KeyError, IndexError, TypeError):
+        # fallback: cari file dengan prefix out_base
+        for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
+            if c.endswith((".mp4", ".mkv", ".webm")):
                     return c
             raise RuntimeError("Download selesai tapi file video tidak ditemukan.")
 
@@ -324,15 +350,14 @@ def download_frames_proxy(url: str, out_base) -> str:
         "quiet": True, "no_warnings": True, "noprogress": True,
         **_cookie_opts(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        try:
-            return info["requested_downloads"][0]["filepath"]
-        except (KeyError, IndexError, TypeError):
-            for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
-                if c.split(".")[-1].lower() in _MEDIA_EXTENSIONS:
-                    return c
-            raise RuntimeError("Download frame-proxy selesai tapi file tidak ditemukan.")
+    info = _extract(opts, url, download=True)
+    try:
+        return info["requested_downloads"][0]["filepath"]
+    except (KeyError, IndexError, TypeError):
+        for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
+            if c.split(".")[-1].lower() in _MEDIA_EXTENSIONS:
+                return c
+        raise RuntimeError("Download frame-proxy selesai tapi file tidak ditemukan.")
 
 
 def download_audio(url: str, out_base) -> str:
@@ -345,12 +370,11 @@ def download_audio(url: str, out_base) -> str:
         "quiet": True, "no_warnings": True, "noprogress": True,
         **_cookie_opts(),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        try:
-            return info["requested_downloads"][0]["filepath"]
-        except (KeyError, IndexError, TypeError):
-            for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
-                if c.split(".")[-1] in ("m4a", "opus", "webm", "mp3", "ogg", "mp4"):
-                    return c
+    info = _extract(opts, url, download=True)
+    try:
+        return info["requested_downloads"][0]["filepath"]
+    except (KeyError, IndexError, TypeError):
+        for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
+            if c.split(".")[-1] in ("m4a", "opus", "webm", "mp3", "ogg", "mp4"):
+                return c
             raise RuntimeError("Download audio selesai tapi file tidak ditemukan.")
