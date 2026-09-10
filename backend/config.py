@@ -44,6 +44,18 @@ def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
+# ============ AUTO-POST: YouTube Shorts (Google OAuth) ============
+# Daftar: console.cloud.google.com -> project baru -> aktifkan YouTube Data API v3
+# -> OAuth consent screen (External, test user = akunmu) -> OAuth client ID
+# (Web application, redirect: http://localhost:8000/api/publish/callback).
+# Client ID/Secret cukup ditempel di .env — JANGAN pernah dikirim via chat.
+YT_CLIENT_ID = env("YT_CLIENT_ID")
+YT_CLIENT_SECRET = env("YT_CLIENT_SECRET")
+YT_REDIRECT_URI = env("YT_REDIRECT_URI", "http://localhost:8000/api/publish/callback")
+# Token OAuth disimpan di file (refresh token long-lived) — masuk volume Docker.
+YT_TOKEN_FILE = env("YT_TOKEN_FILE", "")  # kosong = default JOBS_DIR/yt_token.json
+PUBLISH_PRIVACY = env("PUBLISH_PRIVACY", "public")  # public / unlisted / private
+
 # ============ SIAP-PRODUK: auth ringan + kuota harian ============
 # API_KEY kosong = mode lokal LAMA (tanpa login, semua request diizinkan).
 # Diisi = wajib kirim header `X-API-Key` (atau ?key=) utk endpoint /api/clip,

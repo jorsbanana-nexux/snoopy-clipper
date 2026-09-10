@@ -24,6 +24,15 @@ def save_meta(meta: dict):
     p.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def load_meta(video_id: str) -> dict:
+    """Baca meta.json satu video (kosong kalau belum ada/rusak)."""
+    p = config.LIBRARY_DIR / video_id / "meta.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 def list_videos() -> list:
     out = []
     if not config.LIBRARY_DIR.exists():
