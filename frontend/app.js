@@ -2,6 +2,33 @@ const $ = (s) => document.querySelector(s);
 let pollTimer = null;
 let etaTimer = null;
 
+// ============ kunci API (mode hosting publik; mode lokal tak terlihat) ============
+// Server dengan API_KEY terisi akan menolak request tanpa kunci.
+// Simpan di localStorage, tempel sekali per browser.
+function apiKey() {
+  return localStorage.getItem("snoopy_key") || "";
+}
+
+async function api(url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, { "X-API-Key": apiKey() });
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    const k = prompt("Kunci API salah/ada. Tempel kunci yang kamu terima:");
+    if (k) { localStorage.setItem("snoopy_key", k); return api(url, opts); }
+  }
+  return res;
+}
+
+async function ensureKey() {
+  try {
+    const h = await (await fetch("/api/health")).json();
+    if (h.auth && !localStorage.getItem("snoopy_key")) {
+      const k = prompt("Server ini terproteksi kunci API. Tempel kuncinya:");
+      if (k) localStorage.setItem("snoopy_key", k);
+    }
+  } catch { /* offline: biarkan, alert error lama yang bicara */ }
+}
+
 // Semua teks job/library bisa berasal dari judul, channel, atau error extractor
 // eksternal. Jangan pernah masukkan mentah ke innerHTML.
 function esc(value) {
@@ -57,7 +84,7 @@ async function startJob() {
   }
   $("#go").disabled = true;
   try {
-    const res = await fetch("/api/clip", {
+    const res = await api("/api/clip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
@@ -83,7 +110,7 @@ function poll(jobId) {
   pollTimer = setInterval(async () => {
     let job;
     try {
-      job = await (await fetch(`/api/jobs/${jobId}`)).json();
+      job = await (await api(`/api/jobs/${jobId}`)).json();
     } catch {
       return;
     }
@@ -127,7 +154,7 @@ function renderJob(job) {
 async function loadLibrary() {
   let data;
   try {
-    data = await (await fetch("/api/library")).json();
+    data = await (await api("/api/library")).json();
   } catch {
     return;
   }
@@ -158,7 +185,7 @@ async function loadLibrary() {
     </div>`).join("");
 }
 
-loadLibrary();
+ensureKey().then(loadLibrary);
 $("#go").addEventListener("click", startJob);
 $("#url").addEventListener("keydown", (e) => {
   if (e.key === "Enter") startJob();

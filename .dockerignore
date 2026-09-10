@@ -1,0 +1,10 @@
+downloads/
+library/
+jobs/
+logs/
+bgm/
+models/
+.env
+.git/
+__pycache__/
+*.pyc

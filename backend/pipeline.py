@@ -23,7 +23,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import (config, downloader, transcriber, brain, captions, diarize, thumbnail,
+from . import (quota, config, downloader, transcriber, brain, captions, diarize, thumbnail,
               facetrack, subtitles, cutter, library, bgm)
 
 _jobs = {}
@@ -42,6 +42,7 @@ def _persist(job):
     Tulis ke file sementara lalu replace agar setiap pembaca melihat snapshot
     lengkap lama atau lengkap baru, tidak pernah data korup.
     """
+    job["updated"] = time.time()  # utk statistik durasi job (avg di /api/stats)
     path = config.JOBS_DIR / f"{job['id']}.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
@@ -105,6 +106,42 @@ def _update(job_id, **kw):
         _persist(job)
 
 
+# ---------------- observability ringan (JSONL -> logs/jobs.log) ----------------
+
+def _log_event(event: str, job_id: str, **kw):
+    """Satu baris JSON per peristiwa penting — bisa digrep/Chart.log tanpa infra.
+    Gagal nulis log TIDAK boleh memengaruhi job (best-effort)."""
+    try:
+        rec = {"ts": round(time.time(), 3), "event": event, "job": job_id, **kw}
+        with open(config.LOGS_DIR / "jobs.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def recover_stale_jobs() -> int:
+    """Saat SERVER BARU MULAI: job yang mati di tengah jalan (proses ter-kill,
+    restart, OOM) tidak boleh nanggung 'running' selamanya di UI.
+    Status queued/running sisa sesi lama -> error yang jelas.
+    -> jumlah job yang dipulihkan."""
+    n = 0
+    for p in config.JOBS_DIR.glob("*.json"):
+        try:
+            job = json.loads(p.read_text(encoding="utf-8"))
+            if job.get("status") in ("queued", "running"):
+                job["status"] = "error"
+                job["message"] = ("Dibatalkan — server dimulai ulang saat job berjalan. "
+                                  "Silakan tempel URL yang sama lagi (cache membuat ulang "
+                                  "lebih cepat).")
+                job["error"] = "stale_job_recovered"
+                p.write_text(json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
+                _log_event("stale_recovered", job.get("id", p.stem), url=job.get("url"))
+                n += 1
+        except Exception:
+            pass  # file json rusak tidak boleh menggagalkan startup
+    return n
+
+
 def _drift(elapsed: float, estimated: float) -> float:
     """Rasio kecepatan aktual vs estimasi. Di-clamp biar ETA tidak gila."""
     if not estimated or estimated <= 0:
@@ -148,6 +185,7 @@ def _left(est: dict, from_step: str, drift: float, render_est_left: float) -> fl
 def _run(job_id):
     job = _jobs[job_id]
     try:
+        _log_event("start", job_id, url=job.get("url"))
         _update(job_id, status="running", step="info",
                 message="Mengambil info video…", pct=2, eta_seconds=None)
         local = job.get("local_path")
@@ -172,6 +210,13 @@ def _run(job_id):
             info = downloader.get_info(job["url"])
         duration = info["duration"]
         _jobs[job_id]["info"] = info  # konteks utk otak v3 (judul/channel/deteksi anak)
+        _jobs[job_id]["duration"] = duration  # utk kuota & statistik
+        if not quota.allow(duration):
+            left = max(0.0, config.DAILY_MINUTES_LIMIT - quota.used_seconds() / 60)
+            raise RuntimeError(
+                f"Kuota harian tidak cukup (sisa {left:.0f} menit dari "
+                f"{config.DAILY_MINUTES_LIMIT:.0f}). Video ini {duration / 60:.0f} menit — "
+                f"besok kuota reset otomatis (00:00 UTC).")
         if duration <= 0:
             # Banyak platform (Instagram Reels, dsb.) TIDAK melaporkan durasi
             # di metadata. Unduh videonya (umumnya pendek), ukur pakai ffprobe,
@@ -254,6 +299,7 @@ def _run(job_id):
             msg += (" — beberapa video (mis. konten anak/terkunci) butuh login: "
                     "isi COOKIES_FROM_BROWSER=chrome di file .env")
         _update(job_id, status="error", message=msg, error=str(e))
+        _log_event("error", job_id, error=str(e)[:200])
 
 
 # ---------------- langkah-langkah ----------------
@@ -758,5 +804,12 @@ def _finish(job_id, info):
         msg = ("Selesai — otak TIDAK menemukan momen yang layak dijadikan klip "
                "(standar viral ketat: kontennya datar/terlalu pendek). Coba video lain — "
                "bukan semua video harus menghasilkan klip.")
+    quota.add(_jobs[job_id].get("duration") or 0)  # hanya job SUKSES yang menghabiskan kuota
     _update(job_id, status="done", step="done", pct=100, eta_seconds=0,
             message=msg, video_id=info["id"])
+    j = _jobs[job_id]
+    created = j.get("created")  # job uji/offline bisa tanpa field ini
+    _log_event("done", job_id,
+               seconds=(round(time.time() - created, 1) if created else None),
+               clips=len(j.get("clips") or []),
+               duration_source=round(j.get("duration") or 0))

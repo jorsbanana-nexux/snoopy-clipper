@@ -1,0 +1,15 @@
+# Deploy:  cp .env.example .env  -> isi API_KEY & GEMINI_API_KEY -> docker compose up -d --build
+services:
+  snoopy:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    restart: unless-stopped   # VPS reboot -> server otomatis hidup lagi
+    volumes:                  # state di luar image: upgrade = rebuild tanpa kehilangan data
+      - ./downloads:/app/downloads
+      - ./library:/app/library
+      - ./jobs:/app/jobs
+      - ./models:/app/models
+      - ./bgm:/app/bgm
+      - ./logs:/app/logs

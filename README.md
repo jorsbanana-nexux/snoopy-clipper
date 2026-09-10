@@ -312,6 +312,29 @@ video via URL atau upload file, progress + ETA live, preview klip inline + ZIP u
 Cocok untuk: coba pertama kali, demo, atau uji perubahan tanpa repot PC low-spec.
 ( Pipeline lokal & Colab pakai kode yang sama persis dari repo ini. )
 
+## Deploy ke VPS (siap publik)
+
+Server ini bisa dititipkan di VPS murah mana pun (butuh ~2 GB RAM):
+
+```bash
+cp .env.example .env
+# isi GEMINI_API_KEY, lalu GENERATE kunci akses:
+python3 -c "import secrets; print(secrets.token_urlsafe(24))"   # -> API_KEY=
+docker compose up -d --build
+```
+
+Yang sudah ada di lapisan siap-produk:
+- **API_KEY** (.env) — tanpa ini, server publik = orang asing pakai Gemini
+  key & CPU kita gratis. Frontend otomatis minta kunci sekali per browser.
+- **DAILY_MINUTES_LIMIT** (.env) — kuota menit video per hari (reset 00:00 UTC),
+  fondasi billing. Job GAGAL tidak menghabiskan kuota.
+- **Pemulihan job basi** — server restart/crash saat job jalan: job otomatis
+  ditandai error yang jelas saat server hidup lagi, tidak nanggung "running".
+- **logs/jobs.log** — JSONL ringan (start/done/error + durasi) + `GET /api/stats`
+  (jumlah job, klip, rata-rata detik per job) & `GET /api/quota`.
+
+Belum ada (roadmap): login multi-user penuh, pembayaran, auto-post ke platform.
+
 ## Roadmap
 
 - [ ] Test drive di video nyata → kalibrasi rasa (grade & tracking)
