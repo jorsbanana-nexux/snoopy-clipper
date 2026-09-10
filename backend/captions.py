@@ -7,12 +7,15 @@ menggantikan "unduh video penuh + whisper penuh" dengan "transkrip instan".
 Tanpa word-timestamp (otak cukup baris; word-per-kata diambil whisper per-klip).
 """
 import json
+import logging
 import re
 import urllib.request
 
 import yt_dlp
 
 from .downloader import normalize_url, _cookie_opts
+
+logger = logging.getLogger(__name__)
 
 # urutan preferensi bahasa (id = prioritas user)
 _LANG_PRIORITY = ["id", "en", "ja", "ko", "es", "pt", "zh-Hans", "zh", "ar"]
@@ -29,33 +32,43 @@ def fetch(url: str):
         "noplaylist": True, **_cookie_opts(),
     }
     url = normalize_url(url)  # mis. YouTube Kids -> YouTube (transkrip tetap ketemu)
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        manual = info.get("subtitles") or {}
-        auto = info.get("automatic_captions") or {}
-        lang, fmts = None, None
-        for source in (manual, auto):  # subtitle manual lebih akurat dari auto
-            for l in _LANG_PRIORITY + sorted(source):
-                if source.get(l):
-                    lang, fmts = l, source[l]
-                    break
-            if fmts:
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        # mis. HTTP 429 (rate-limit YouTube, sementara): job TIDAK gagal,
+        # cukup dianggap 'tanpa transkrip platform' -> fallback whisper.
+        logger.warning("Captions: metadata tak terambil (%s) -> jalur whisper", e)
+        return None
+    manual = info.get("subtitles") or {}
+    auto = info.get("automatic_captions") or {}
+    lang, fmts = None, None
+    for source in (manual, auto):  # subtitle manual lebih akurat dari auto
+        for l in _LANG_PRIORITY + sorted(source):
+            if source.get(l):
+                lang, fmts = l, source[l]
                 break
-        if not fmts:
-            return None
-        by_ext = {f.get("ext"): f for f in fmts if isinstance(f, dict)}
-        pick = by_ext.get("json3") or by_ext.get("vtt") or by_ext.get("srt")
-        if not pick:
-            return None
-        if pick.get("data"):
-            raw = "".join(chr(c) if isinstance(c, int) else c for c in pick["data"])
-        elif pick.get("url"):
+        if fmts:
+            break
+    if not fmts:
+        return None
+    by_ext = {f.get("ext"): f for f in fmts if isinstance(f, dict)}
+    pick = by_ext.get("json3") or by_ext.get("vtt") or by_ext.get("srt")
+    if not pick:
+        return None
+    if pick.get("data"):
+        raw = "".join(chr(c) if isinstance(c, int) else c for c in pick["data"])
+    elif pick.get("url"):
+        try:
             raw = urllib.request.urlopen(pick["url"], timeout=30).read().decode("utf-8", "ignore")
-        else:
+        except Exception as e:
+            logger.warning("Captions: file transkrip tak terunduh (%s) -> jalur whisper", e)
             return None
-        if pick.get("ext") == "json3":
-            return _parse_json3(raw, lang)
-        return _parse_vtt(raw, lang)
+    else:
+        return None
+    if pick.get("ext") == "json3":
+        return _parse_json3(raw, lang)
+    return _parse_vtt(raw, lang)
 
 
 def _tokens(text: str) -> list[str]:
