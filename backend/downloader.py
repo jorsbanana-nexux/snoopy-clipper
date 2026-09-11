@@ -12,17 +12,25 @@ import yt_dlp
 from . import config
 
 
-_cookies_broken = False  # cache: sekali gagal, jangan coba baca cookie browser lagi
+_cookies_broken = False  # cache: sekali browser cookie gagal, jangan coba lagi tiap panggilan
+
+
+def _cookiefile_path() -> Path:
+    return Path(config.COOKIES_FILE or (config.BASE_DIR / "cookies.txt"))
 
 
 def _cookie_opts() -> dict:
-    """Opsi cookie yt-dlp — aktif hanya kalau diaktifkan (jaga-jaga blokir YouTube)."""
-    if _cookies_broken:
-        return {}
-    if config.COOKIES_FROM_BROWSER:
-        # baca langsung dari profil browser — tanpa file apa pun
+    """Opsi cookie yt-dlp — LAPIS BERTINGKAT, bukan salah satu doang:
+    1. cookiesfrombrowser (kalau diisi & belum terbukti rusak sesi ini)
+    2. cookies.txt (kalau file itu ADA) — dicoba baik saat browser tak
+       diaktifkan MAUPUN sebagai cadangan begitu browser terbukti gagal
+       (bug lama: _cookies_broken dulu langsung return {} tanpa pernah
+       melihat cookies.txt sama sekali — file yang sudah ditaruh user
+       jadi tidak berguna. Sekarang ditinjau ulang tiap panggilan.)
+    3. tanpa cookie — video publik tetap bisa."""
+    if config.COOKIES_FROM_BROWSER and not _cookies_broken:
         return {"cookiesfrombrowser": (config.COOKIES_FROM_BROWSER,)}
-    cf = Path(config.COOKIES_FILE or (config.BASE_DIR / "cookies.txt"))
+    cf = _cookiefile_path()
     if cf.exists():
         return {"cookiefile": str(cf)}
     return {}
@@ -30,12 +38,15 @@ def _cookie_opts() -> dict:
 
 def _extract(opts: dict, url: str, download: bool = False) -> dict:
     """extract_info dengan fallback otomatis kalau cookie-dari-browser gagal
-    dibaca — pesan yt-dlp bervariasi tergantung sebab (Chrome sedang terbuka
-    & mengunci Cookies.sqlite di Windows/issue #7271, browser tak terpasang,
-    keyring tak tersedia, dst) tapi SELALU menyebut "cookie" di pesannya.
-    Video publik biasanya tetap bisa diunduh TANPA cookie sama sekali, jadi
-    daripada seluruh job gagal, coba ulang sekali tanpa cookie lalu ingat
-    untuk sisa proses ini (hemat, tak mengulang cek tiap panggilan)."""
+    dibaca — pesan yt-dlp bervariasi tergantung sebab (Chrome App-Bound
+    Encryption di versi baru, Chrome sedang terbuka & mengunci Cookies.sqlite
+    di Windows/issue #7271, browser tak terpasang, keyring tak tersedia, dst)
+    tapi SELALU menyebut "cookie" di pesannya.
+    Fallback bertingkat, BUKAN langsung lompat ke tanpa-cookie sama sekali:
+    browser gagal -> coba cookies.txt kalau file itu ada -> baru tanpa cookie.
+    Video yang butuh login (age-restricted dsb) tetap bisa lolos lewat
+    cookies.txt walau browser-nya diblokir Chrome; video publik tetap jalan
+    walau kedua cookie tak tersedia."""
     global _cookies_broken
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -45,9 +56,18 @@ def _extract(opts: dict, url: str, download: bool = False) -> dict:
         has_cookie_opt = bool(opts.get("cookiesfrombrowser") or opts.get("cookiefile"))
         if has_cookie_opt and "cookie" in msg:
             _cookies_broken = True
-            retry_opts = {k: v for k, v in opts.items()
-                         if k not in ("cookiesfrombrowser", "cookiefile")}
-            with yt_dlp.YoutubeDL(retry_opts) as ydl:
+            base_opts = {k: v for k, v in opts.items()
+                        if k not in ("cookiesfrombrowser", "cookiefile")}
+            # cadangan 1: cookies.txt, HANYA kalau bukan itu yang baru gagal
+            cf = _cookiefile_path()
+            if opts.get("cookiesfrombrowser") and cf.exists():
+                try:
+                    with yt_dlp.YoutubeDL({**base_opts, "cookiefile": str(cf)}) as ydl:
+                        return ydl.extract_info(url, download=download)
+                except yt_dlp.utils.DownloadError:
+                    pass  # cookies.txt juga gagal/kedaluwarsa -> lanjut cadangan 2
+            # cadangan 2: tanpa cookie sama sekali (video publik tetap jalan)
+            with yt_dlp.YoutubeDL(base_opts) as ydl:
                 return ydl.extract_info(url, download=download)
         raise
 
