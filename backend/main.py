@@ -7,6 +7,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import json
+import secrets
+import time
+import urllib.parse
+import urllib.request
+
 from . import config, pipeline, library, quota, publisher, accounts, billing
 
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -128,6 +134,10 @@ def auth_login(req: AuthRequest):
     _multiuser_guard()
     user = accounts.login(req.email, req.password)
     if not user:
+        existing = accounts.get(req.email)
+        if existing and not existing.get("pwhash"):
+            raise HTTPException(400, "Akun ini dibuat via Google — "
+                                     "pakai tombol Masuk dengan Google.")
         raise HTTPException(401, "Email atau password salah.")
     return {"email": user["email"], "api_key": user["api_key"],
             "plan": accounts.effective_plan(user)}
@@ -191,6 +201,82 @@ def billing_grant(req: GrantRequest, user=Depends(require_key)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return accounts.public(target)
+
+# ---------------- Login dengan Google (gap #6, opsional) ----------------
+# Memakai OAuth client YouTube yang sudah terpasang (YT_CLIENT_ID/SECRET)
+# atau client sendiri via GOOGLE_LOGIN_CLIENT_ID. Scope BUKAN youtube:
+# openid + email + profile saja (Google tidak perlu setujui app untuk ini
+# bila dipakai personal; app "testing" + akun tester sendiri sudah cukup).
+_GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
+_GOOGLE_TOKENINFO = "https://oauth2.googleapis.com/tokeninfo"
+_google_states: dict = {}  # state -> epoch (anti-CSRF, TTL 10 menit)
+
+
+def _google_creds():
+    return (config.GOOGLE_LOGIN_CLIENT_ID or config.YT_CLIENT_ID,
+            config.GOOGLE_LOGIN_CLIENT_SECRET or config.YT_CLIENT_SECRET)
+
+
+def _gredirect(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/api/auth/google/callback"
+
+
+@app.get("/api/auth/google/url")
+def google_login_url(request: Request):
+    _multiuser_guard()
+    cid, _ = _google_creds()
+    if not cid:
+        raise HTTPException(503, "Login Google belum dikonfigurasi — isi "
+                                 "YT_CLIENT_ID atau GOOGLE_LOGIN_CLIENT_ID.")
+    now = time.time()
+    for k in [k for k, v in _google_states.items() if now - v > 600]:
+        _google_states.pop(k, None)
+    state = secrets.token_hex(16)
+    _google_states[state] = now
+    q = urllib.parse.urlencode({
+        "client_id": cid, "redirect_uri": _gredirect(request),
+        "response_type": "code", "scope": "openid email profile",
+        "state": state, "prompt": "select_account"})
+    return {"url": _GOOGLE_AUTH + "?" + q}
+
+
+@app.get("/api/auth/google/callback")
+def google_login_callback(request: Request, code: str = "",
+                          state: str = "", error: str = ""):
+    """Balik dari Google: tukar code -> id_token, verifikasi lewat endpoint
+    resmi Google (signature, audiens, email_verified), lalu login/daftar
+    otomatis. Kunci API ditanam ke localStorage lewat HTML satu-baris
+    (asal sama dengan frontend, aman)."""
+    if error:
+        return HTMLResponse(
+            "<script>alert('Login Google dibatalkan.');location.href='/'</script>")
+    issued = _google_states.pop(state, None)
+    if not issued or time.time() - issued > 600:
+        return HTMLResponse(
+            "<script>alert('Sesi login Google kedaluwarsa — coba lagi.');"
+            "location.href='/'</script>", status_code=400)
+    cid, csec = _google_creds()
+    body = urllib.parse.urlencode({
+        "code": code, "client_id": cid, "client_secret": csec,
+        "redirect_uri": _gredirect(request),
+        "grant_type": "authorization_code"}).encode()
+    with urllib.request.urlopen(urllib.request.Request(
+            _GOOGLE_TOKEN, data=body, method="POST"), timeout=20) as r:
+        tok = json.loads(r.read())
+    if not tok.get("id_token"):
+        raise HTTPException(400, "Google tidak mengirim id_token.")
+    with urllib.request.urlopen(_GOOGLE_TOKENINFO + "?id_token="
+            + urllib.parse.quote(tok["id_token"]), timeout=20) as r:
+        info = json.loads(r.read())
+    if (info.get("aud") != cid
+            or str(info.get("email_verified")).lower() != "true"
+            or not info.get("email")):
+        raise HTTPException(400, "Token Google tidak valid.")
+    user = accounts.upsert_google(info["email"])
+    return HTMLResponse(
+        "<script>localStorage.setItem('snoopy_key','" + user["api_key"]
+        + "');location.href='/';</script>")
 
 
 @app.get("/api/stats")

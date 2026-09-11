@@ -244,6 +244,8 @@ $("#url").addEventListener("keydown", (e) => {
         <h2 id="auth-title">Masuk</h2>
         <input id="auth-email" type="email" placeholder="Email" autocomplete="email">
         <input id="auth-pass" type="password" placeholder="Password (min. 8 karakter)">
+        <button id="auth-google">Masuk dengan Google</button>
+        <div class="auth-or">— atau dengan email —</div>
         <button id="auth-submit">Masuk</button>
         <p class="auth-alt">Belum punya akun? <a href="#" id="auth-toggle">Daftar</a></p>
         <p class="auth-err" id="auth-err"></p>
@@ -275,6 +277,12 @@ $("#url").addEventListener("keydown", (e) => {
       if (!r.ok) { $("#auth-err").textContent = j.detail || "Gagal — coba lagi."; return; }
       localStorage.setItem("snoopy_key", j.api_key);
       location.reload();
+    };
+    $("#auth-google").onclick = async () => {
+      const r = await fetch("/api/auth/google/url");
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.url) { location.href = j.url; }
+      else { $("#auth-err").textContent = j.detail || "Login Google belum aktif di server."; }
     };
   }
 

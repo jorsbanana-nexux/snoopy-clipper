@@ -85,8 +85,9 @@ def login(email: str, password: str):
     email = (email or "").strip().lower()
     with _LOCK:
         user = _load().get(email)
-    if not user or _hash(password, user["salt"]) != user["pwhash"]:
-        return None
+    if not user or not user.get("pwhash") or \
+            _hash(password, user["salt"]) != user["pwhash"]:
+        return None  # akun google-only tak bisa login via password
     return user
 
 
@@ -153,3 +154,30 @@ def public(user) -> dict:
         "daily_minutes": PLANS[eff]["daily_minutes"],
         "admin": is_admin(user),
     }
+
+
+def upsert_google(email: str) -> dict:
+    """Login via Google: user dg email itu sudah ada -> dipakai (ditautkan);
+    belum ada -> akun BARU tanpa password (login hanya via Google).
+    Email diverifikasi penuh oleh Google sebelum sampai sini (lihat main.py)."""
+    email = (email or "").strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise ValueError("Email Google tidak valid.")
+    with _LOCK:
+        data = _load()
+        user = data.get(email)
+        if not user:
+            user = {
+                "email": email, "salt": secrets.token_hex(16), "pwhash": None,
+                "api_key": "sk_" + secrets.token_hex(16),
+                "plan": "free", "plan_expires": None,
+                "admin": email == (config.ADMIN_EMAIL or "").strip().lower(),
+                "google": True,
+                "created": datetime.now(timezone.utc).isoformat(),
+            }
+            data[email] = user
+            _save(data)
+        elif not user.get("google"):
+            user["google"] = True  # tautkan ke akun email+password yang ada
+            _save(data)
+        return user

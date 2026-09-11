@@ -144,3 +144,92 @@ def test_create_clip_membawa_akun_pemesan(monkeypatch):
     assert r.status_code == 200 and r.json()["job_id"] == "job123"
     assert calls[0][1] == out["api_key"]  # job melekat ke akun, bukan global
     assert calls[0][2] == config.PLAN_FREE_DAILY_MINUTES
+
+
+def test_google_login_buat_akun_tautan_dan_anti_csrf(monkeypatch):
+    import urllib.parse
+    import backend.main as main_mod
+
+    class FakeResp:
+        def __init__(self, data):
+            self._d = data
+        def read(self):
+            return json.dumps(self._d).encode()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        url = getattr(req, "full_url", req)
+        if "tokeninfo" in url:
+            return FakeResp({"aud": "test-cid", "email": "g@x.id",
+                             "email_verified": "true"})
+        return FakeResp({"id_token": "abc"})
+    monkeypatch.setattr(main_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(config, "YT_CLIENT_ID", "test-cid")
+    monkeypatch.setattr(config, "YT_CLIENT_SECRET", "test-sec")
+
+    r = client.get("/api/auth/google/url")
+    assert r.status_code == 200
+    url = r.json()["url"]
+    assert "accounts.google.com" in url and "openid" in url
+    state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
+    r = client.get("/api/auth/google/callback", params={"code": "c1", "state": state})
+    assert r.status_code == 200 and "snoopy_key" in r.text
+    user = accounts.get("g@x.id")
+    assert user and user.get("google") and user["api_key"].startswith("sk_")
+    # akun google-only TAK BISA login via password -> pesan jelas (400, bukan 401)
+    r = client.post("/api/auth/login",
+                    json={"email": "g@x.id", "password": "apapun123"})
+    assert r.status_code == 400
+    # state dipakai ulang -> 400 (anti-CSRF sekali-pakai)
+    r = client.get("/api/auth/google/callback", params={"code": "c2", "state": state})
+    assert r.status_code == 400
+    # login Google utk email yang SUDAH punya akun password -> akun sama (tautan)
+    _register("h@x.id")
+
+    def fake2(req, timeout=None):
+        url = getattr(req, "full_url", req)
+        if "tokeninfo" in url:
+            return FakeResp({"aud": "test-cid", "email": "h@x.id",
+                             "email_verified": "true"})
+        return FakeResp({"id_token": "x"})
+    monkeypatch.setattr(main_mod.urllib.request, "urlopen", fake2)
+    r2 = client.get("/api/auth/google/url")
+    st2 = urllib.parse.parse_qs(urllib.parse.urlparse(r2.json()["url"]).query)["state"][0]
+    r3 = client.get("/api/auth/google/callback", params={"code": "c3", "state": st2})
+    assert r3.status_code == 200
+    disk = json.loads(accounts._FILE.read_text())
+    assert disk["h@x.id"]["google"] is True     # akun lama, ditautkan
+    assert accounts.get("h@x.id")["pwhash"]     # password-nya tetap ada
+
+
+def test_google_token_tak_valid_ditolak(monkeypatch):
+    import urllib.parse
+    import backend.main as main_mod
+
+    class FakeResp:
+        def __init__(self, data):
+            self._d = data
+        def read(self):
+            return json.dumps(self._d).encode()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    def fake3(req, timeout=None):
+        url = getattr(req, "full_url", req)
+        if "tokeninfo" in url:
+            return FakeResp({"aud": "test-cid", "email": "jahat@x.id",
+                             "email_verified": "false"})
+        return FakeResp({"id_token": "x"})
+    monkeypatch.setattr(main_mod.urllib.request, "urlopen", fake3)
+    monkeypatch.setattr(config, "YT_CLIENT_ID", "test-cid")
+    monkeypatch.setattr(config, "YT_CLIENT_SECRET", "test-sec")
+    r = client.get("/api/auth/google/url")
+    state = urllib.parse.parse_qs(urllib.parse.urlparse(r.json()["url"]).query)["state"][0]
+    r = client.get("/api/auth/google/callback", params={"code": "c", "state": state})
+    assert r.status_code == 400          # email belum diverifikasi -> ditolak
+    assert accounts.get("jahat@x.id") is None

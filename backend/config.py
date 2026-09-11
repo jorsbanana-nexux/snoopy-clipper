@@ -101,6 +101,12 @@ ADMIN_EMAIL = env("ADMIN_EMAIL", "")
 # Server key sandbox berawalan "SB-Mid-server-". Webhook: /api/billing/midtrans-webhook
 MIDTRANS_SERVER_KEY = env("MIDTRANS_SERVER_KEY", "")
 MIDTRANS_IS_PRODUCTION = env("MIDTRANS_IS_PRODUCTION", "0") == "1"
+# Login dengan Google (opsional, gap #6): default MEMAKAI client OAuth
+# YouTube (YT_CLIENT_ID/SECRET) — cukup tambah redirect URI
+# http://localhost:8000/api/auth/google/callback di Google Cloud Console.
+# Scope login: openid+email+profile saja (BUKAN YouTube).
+GOOGLE_LOGIN_CLIENT_ID = env("GOOGLE_LOGIN_CLIENT_ID", "")
+GOOGLE_LOGIN_CLIENT_SECRET = env("GOOGLE_LOGIN_CLIENT_SECRET", "")
 
 # ============ OTAK AI (Gemini) — satu-satunya layanan AI eksternal ============
 GEMINI_API_KEY = env("GEMINI_API_KEY")
