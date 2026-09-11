@@ -540,7 +540,9 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
-                subtitles.build_ass(words, focus_y, vision, tw, th, start, end),
+                subtitles.build_ass(words, focus_y, vision, tw, th, start, end,
+                                    layout=m.get("layout"),
+                                    layout_events=m.get("layout_events")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()
@@ -671,7 +673,9 @@ def _render_ranged(job_id, info, moments, full_words):
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
-                subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
+                subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur,
+                                    layout=m.get("layout"),
+                                    layout_events=m.get("layout_events")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()  # untuk kalibrasi drift klip berikutnya
@@ -790,6 +794,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "content_type": m.get("content_type", ""), "topic_tag": m.get("topic_tag", ""),
         "bgm": bgm_credit, "loop": bool(m.get("loop", False)),
         "loop_note": str(m.get("loop_note", ""))[:160],
+        "layout": str(m.get("layout", "single"))[:8],
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,
