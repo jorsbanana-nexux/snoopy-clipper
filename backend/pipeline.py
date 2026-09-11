@@ -67,7 +67,8 @@ def _ensure_worker():
         _worker_started = True
 
 
-def create_job(url: str, local_path: str = None) -> str:
+def create_job(url: str, local_path: str = None,
+               user_key: str = None, plan_minutes: float = None) -> str:
     """Mulai job. Berikan `url`, ATAU `local_path` untuk file yang sudah ada di disk."""
     orig_url = (url or "").strip()
     kids_url = "youtubekids." in orig_url.lower()  # sinyal kids sebelum dinormalisasi
@@ -76,6 +77,7 @@ def create_job(url: str, local_path: str = None) -> str:
     job = {
         "id": job_id, "url": url or f"local:{local_path}", "local_path": local_path,
         "kids_url": kids_url,
+        "user_key": user_key, "plan_minutes": plan_minutes,  # multi-user (gap #6)
         "status": "queued", "step": "queue",
         "message": "Menunggu antrean…", "pct": 0, "eta_seconds": None,
         "clips": [], "error": None, "created": time.time(),
@@ -211,7 +213,15 @@ def _run(job_id):
         duration = info["duration"]
         _jobs[job_id]["info"] = info  # konteks utk otak v3 (judul/channel/deteksi anak)
         _jobs[job_id]["duration"] = duration  # utk kuota & statistik
-        if not quota.allow(duration):
+        if job.get("user_key"):  # mode multi-user: batas plan milik user ini
+            pm = job.get("plan_minutes") or 0
+            if not quota.user_allow(job["user_key"], pm, duration):
+                used = quota.used_seconds(user=job["user_key"])
+                raise RuntimeError(
+                    f"Kuota harian plan-mu tidak cukup (terpakai {used / 60:.0f} dari "
+                    f"batas {pm:.0f} menit/hari; video ini {duration / 60:.0f} menit). "
+                    "Upgrade plan di panel akun, atau besok kuota reset (00:00 UTC).")
+        elif not quota.allow(duration):
             left = max(0.0, config.DAILY_MINUTES_LIMIT - quota.used_seconds() / 60)
             raise RuntimeError(
                 f"Kuota harian tidak cukup (sisa {left:.0f} menit dari "
@@ -530,7 +540,9 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
-                subtitles.build_ass(words, focus_y, vision, tw, th, start, end),
+                subtitles.build_ass(words, focus_y, vision, tw, th, start, end,
+                                    layout=m.get("layout"),
+                                    layout_events=m.get("layout_events")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()
@@ -661,7 +673,9 @@ def _render_ranged(job_id, info, moments, full_words):
             clip_id = f"clip_{i + 1:02d}"
             ass_file = workdir / f"{clip_id}.ass"
             ass_file.write_text(
-                subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur),
+                subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur,
+                                    layout=m.get("layout"),
+                                    layout_events=m.get("layout_events")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()  # untuk kalibrasi drift klip berikutnya
@@ -780,6 +794,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "content_type": m.get("content_type", ""), "topic_tag": m.get("topic_tag", ""),
         "bgm": bgm_credit, "loop": bool(m.get("loop", False)),
         "loop_note": str(m.get("loop_note", ""))[:160],
+        "layout": str(m.get("layout", "single"))[:8],
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,
@@ -811,7 +826,8 @@ def _finish(job_id, info):
         msg = ("Selesai — otak TIDAK menemukan momen yang layak dijadikan klip "
                "(standar viral ketat: kontennya datar/terlalu pendek). Coba video lain — "
                "bukan semua video harus menghasilkan klip.")
-    quota.add(_jobs[job_id].get("duration") or 0)  # hanya job SUKSES yang menghabiskan kuota
+    quota.add(_jobs[job_id].get("duration") or 0,
+              user=_jobs[job_id].get("user_key"))  # hanya job SUKSES yang menghabiskan kuota
     _update(job_id, status="done", step="done", pct=100, eta_seconds=0,
             message=msg, video_id=info["id"])
     j = _jobs[job_id]

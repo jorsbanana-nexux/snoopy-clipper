@@ -86,6 +86,28 @@ DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 COOKIES_FROM_BROWSER = env("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE = env("COOKIES_FILE", "")
 
+# ============ MULTI-USER & BILLING (gap #6 — default NONAKTIF) ============
+# MULTIUSER=1 -> registrasi/login akun + kunci API per-user + kuota per plan
+# + halaman login otomatis di UI + endpoint billing (/api/auth/*, /api/billing/*).
+# Saat MULTIUSER=1 biarkan API_KEY KOSONG (auth per-user yang berlaku).
+MULTIUSER = env("MULTIUSER", "0") == "1"
+PLAN_FREE_DAILY_MINUTES = float(env("PLAN_FREE_DAILY_MINUTES", "30"))
+PLAN_PRO_DAILY_MINUTES = float(env("PLAN_PRO_DAILY_MINUTES", "240"))
+PLAN_PRO_PRICE_IDR = int(env("PLAN_PRO_PRICE_IDR", "39000"))
+# Email akun admin — bisa grant plan manual via POST /api/billing/grant.
+ADMIN_EMAIL = env("ADMIN_EMAIL", "")
+# Midtrans opsional: TANPA ini checkout otomatis mode MANUAL (transfer bank,
+# admin grant) — bisa jualan tanpa menunggu approve payment gateway.
+# Server key sandbox berawalan "SB-Mid-server-". Webhook: /api/billing/midtrans-webhook
+MIDTRANS_SERVER_KEY = env("MIDTRANS_SERVER_KEY", "")
+MIDTRANS_IS_PRODUCTION = env("MIDTRANS_IS_PRODUCTION", "0") == "1"
+# Login dengan Google (opsional, gap #6): default MEMAKAI client OAuth
+# YouTube (YT_CLIENT_ID/SECRET) — cukup tambah redirect URI
+# http://localhost:8000/api/auth/google/callback di Google Cloud Console.
+# Scope login: openid+email+profile saja (BUKAN YouTube).
+GOOGLE_LOGIN_CLIENT_ID = env("GOOGLE_LOGIN_CLIENT_ID", "")
+GOOGLE_LOGIN_CLIENT_SECRET = env("GOOGLE_LOGIN_CLIENT_SECRET", "")
+
 # ============ OTAK AI (Gemini) — satu-satunya layanan AI eksternal ============
 GEMINI_API_KEY = env("GEMINI_API_KEY")
 GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.1-pro-preview")  # tertinggi duluan, turun otomatis kalau bermasalah
@@ -170,7 +192,8 @@ MOTION_BLUR_STRENGTH = float(env("MOTION_BLUR_STRENGTH", "0.35"))  # 0.1-0.5 (ke
 # SUBTITLE ala clipper profesional (opus.pro / snazo.app — wajar, bukan raksasa):
 SUBTITLE_FONT = env("SUBTITLE_FONT", "Komika Axis")       # gaya komik; install font-nya dulu
 SUBTITLE_CASE = env("SUBTITLE_CASE", "title")            # title = Huruf Besar Di Awal; upper; normal
-SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.048"))  # ±4.8% tinggi frame (dinaikkan 2%: lebih terbaca di HP)
+SUBTITLE_SIZE_FRAC = float(env("SUBTITLE_SIZE_FRAC", "0.0494"))  # ±4.94% tinggi frame (+3% dari 0.048: lebih terbaca di HP)
+SUBTITLE_SPLIT_LAYER = env("SUBTITLE_SPLIT_LAYER", "1") == "1"  # SPLIT LAYER duo (bisa dimatikan total utk rollback instan)
 SUBTITLE_FADE_MS = int(env("SUBTITLE_FADE_MS", "220"))  # fade-out halus + blur mini saat frasa menutup (0 = potong keras)
 SUBTITLE_Y_FRAC = float(env("SUBTITLE_Y_FRAC", "0.70"))         # ideal 60-75%: area paling bersih dari UI platform
 

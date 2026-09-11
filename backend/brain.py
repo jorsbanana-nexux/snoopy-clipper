@@ -68,8 +68,10 @@ ATURAN KETAT momen:
 
 14. THUMBNAIL PODCAST: setiap klip WAJIB punya "content_type" — jenis konten KLIP INI (bukan video aslinya), pilih HANYA dari: podcast | interview | gaming | storytime | edukasi | vlog | berita | anak | lainnya. PUNYA JUGA "topic_tag" — SATU tag yang PALING NYAMBUNG dengan isi spesifik momen ini (dipakai utk emoji topik di thumbnail, harus akurat), pilih HANYA dari: finance | ekonomi | crypto | investasi | love | fitness | food | tech | gaming | music | travel | edukasi | science | health | sports | drama | motivation | crime | family | cars | nature | business | career | history | berita | politik | spiritual | comedy | psychology | movie | book | ai | law | warning | celebrity. Kalau TIDAK ADA yang benar-benar nyambung dengan topik momen ini, isi "" — JANGAN paksa asal (emoji ngaco = thumbnail jelek).
 
+12. SPLIT LAYER (layout): set "layout": "duo" HANYA kalau frame pada rentang klip BENAR-BENAR terbelah dua zona ATAS-BAWAH — contoh: wajah/pembicara di atas + gameplay/demo/presentasi di bawah, podcast dengan layar terbelah, atau pembicara yang sedang menunjukkan sesuatu di zona berseberangan — yaitu kondisi di mana subtitle satu tempat akan menutupi salah satu zona. Gunakan "single" (default) untuk SEMUA tampilan normal. Kalau kondisi terbelah hanya terjadi SEBAGIAN klip, set layout keseluruhan klip lalu tambah "layout_events": [{{"t": detik-relatif-dari-start-klip, "layout": "single"|"duo"}}] tepat di titik perubahannya (t dalam detik RELATIF dari start klip, bukan timestamp video). JANGAN pakai duo kalau ragu — salah posisi lebih merusak daripada posisi normal.
+
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": ""}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": []}}]}}"""
 
 
 def _today() -> str:
@@ -382,6 +384,27 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             "topic_tag": str(m.get("topic_tag", "")).lower()[:24],
             "loop": is_loop,
             "loop_note": str(m.get("loop_note", ""))[:200],
+            "layout": ("duo" if str(m.get("layout", "single")).lower() == "duo"
+                       else "single"),
+            "layout_events": _layout_events(m.get("layout_events"), e - s),
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
     return out[: config.MAX_CLIPS]
+
+
+def _layout_events(raw, dur: float) -> list:
+    """Validasi keras layout_events dari otak: hanya list dict dengan t di
+    DALAM klip dan layout sah; maksimal 6 titik perubahan; urut."""
+    out = []
+    for ev in (raw or []):
+        if not isinstance(ev, dict):
+            continue
+        try:
+            t = float(ev.get("t", ev.get("time")))
+        except (TypeError, ValueError):
+            continue
+        l = str(ev.get("layout", "")).lower()
+        if 0.05 < t < dur - 0.05 and l in ("single", "duo"):
+            out.append({"t": round(t, 2), "layout": l})
+    out.sort(key=lambda x: x["t"])
+    return out[:6]

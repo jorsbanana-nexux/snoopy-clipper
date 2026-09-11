@@ -111,3 +111,44 @@ h2 { font-size: 18px; margin: 40px 0 14px; color: var(--text); }
 }
 .loop-badge:hover { filter: brightness(1.1); }
 .bgm-credit { color: #8a8f98; font-size: 11.5px; width: 100%; line-height: 1.45; word-break: break-word; margin-top: 2px; }
+
+/* ===== MULTI-USER & BILLING (gap #6) — hanya aktif saat MULTIUSER=1 ===== */
+#auth-overlay { position: fixed; inset: 0; z-index: 9999; display: flex;
+  align-items: center; justify-content: center; background: rgba(8, 10, 14, .93); }
+.auth-card { width: min(360px, 92vw); background: #14171c; border: 1px solid #262b33;
+  border-radius: 14px; padding: 28px; text-align: center; color: #e8eaf0;
+  box-shadow: 0 20px 60px rgba(0,0,0,.55); }
+.auth-logo { font-weight: 700; font-size: 14px; letter-spacing: 1px;
+  text-transform: uppercase; color: #8a8f98; margin-bottom: 8px; }
+.auth-card h2 { margin: 0 0 18px; font-size: 20px; }
+.auth-card input { width: 100%; margin-bottom: 10px; padding: 11px 12px;
+  border-radius: 9px; border: 1px solid #2a303a; background: #0d0f13;
+  color: #e8eaf0; box-sizing: border-box; font-size: 14px; }
+.auth-card input:focus { outline: none; border-color: #5b8cff; }
+#auth-submit { width: 100%; padding: 11px; border: 0; border-radius: 9px;
+  background: #4f7cff; color: #fff; font-weight: 600; font-size: 14px;
+  cursor: pointer; }
+#auth-submit:hover { background: #3d6cf5; }
+.auth-alt { margin: 14px 0 0; font-size: 13px; color: #8a8f98; }
+.auth-alt a { color: #6f9dff; cursor: pointer; }
+.auth-err { min-height: 18px; margin: 8px 0 0; font-size: 13px; color: #ff7a7a; }
+#account-chip { position: fixed; top: 12px; right: 12px; z-index: 500;
+  display: flex; align-items: center; gap: 8px; background: rgba(20, 23, 28, .92);
+  border: 1px solid #262b33; border-radius: 999px; padding: 6px 8px 6px 12px;
+  font-size: 12px; color: #e8eaf0; }
+.chip-plan { font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: #2a303a; }
+.chip-plan.pro { background: #4f7cff; color: #fff; }
+.chip-quota { color: #8a8f98; }
+#chip-upgrade { border: 0; border-radius: 999px; background: #4f7cff; color: #fff;
+  font-weight: 600; font-size: 12px; padding: 5px 10px; cursor: pointer; }
+#chip-upgrade:hover { background: #3d6cf5; }
+#chip-logout { border: 0; background: transparent; color: #8a8f98; font-size: 15px;
+  cursor: pointer; padding: 2px 4px; }
+#chip-logout:hover { color: #ff7a7a; }
+
+#auth-google { width: 100%; padding: 11px; border: 1px solid #2a303a;
+  border-radius: 9px; background: #fff; color: #1f2328; font-weight: 600;
+  font-size: 14px; cursor: pointer; margin-bottom: 4px; }
+#auth-google:hover { background: #f0f2f5; }
+.auth-or { font-size: 12px; color: #8a8f98; margin: 10px 0; }
