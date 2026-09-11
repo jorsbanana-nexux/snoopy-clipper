@@ -2,6 +2,8 @@
 API Snoopy Clipper + server frontend statis.
 Jalankan dari root project:  uvicorn backend.main:app --host 0.0.0.0 --port 8000
 """
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,7 +48,8 @@ def require_key(request: Request):
 
 
 class ClipRequest(BaseModel):
-    url: str
+    url: str = ""
+    local_path: str = ""
 
 
 @app.get("/api/health")
@@ -63,8 +66,14 @@ def health():
 @app.post("/api/clip")
 def create_clip(req: ClipRequest, user=Depends(require_key)):
     url = req.url.strip()
+    local = req.local_path.strip()
+    if local:
+        if not Path(local).is_file():
+            raise HTTPException(400, f"File lokal tidak ditemukan: {local}")
+        return {"job_id": pipeline.create_job(local_path=local)}
     if not url.startswith(("http://", "https://")):
-        raise HTTPException(400, "URL tidak valid — harus diawali http(s)://")
+        raise HTTPException(400, "URL tidak valid — harus diawali http(s)://, "
+                                 "atau kirim local_path untuk file lokal")
     if config.MULTIUSER and user:
         # kuota & penagihan melekat pada akun yang memesan, bukan global
         return {"job_id": pipeline.create_job(

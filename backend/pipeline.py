@@ -67,7 +67,7 @@ def _ensure_worker():
         _worker_started = True
 
 
-def create_job(url: str, local_path: str = None,
+def create_job(url: str = None, local_path: str = None,
                user_key: str = None, plan_minutes: float = None) -> str:
     """Mulai job. Berikan `url`, ATAU `local_path` untuk file yang sudah ada di disk."""
     orig_url = (url or "").strip()

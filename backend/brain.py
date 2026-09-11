@@ -130,7 +130,7 @@ def _build_prompt(transcript: dict, duration: float, frames, frame_interval, met
         kids_note=_kids_note(bool(meta.get("is_kids"))),
         frames_note=_frames_note(frames, frame_interval or 0),
         duration=round(duration),
-        language=transcript["language"],
+        language=_lang_display(transcript.get("language")),
         max_clips=config.MAX_CLIPS,
         min_clip=int(config.MIN_CLIP_SEC),
         max_clip=int(config.MAX_CLIP_SEC),
@@ -316,6 +316,7 @@ def find_moments(transcript: dict, duration: float,
     if moments and _multi_mode():
         moments = _specialist_pass(moments, transcript, duration, frames,
                                    frame_interval)
+    moments = _enforce_language(moments, transcript.get("language"))
     return _validate(moments, transcript["words"], duration,
                      lines=transcript.get("lines"))
 
@@ -345,6 +346,112 @@ def _snap(t: float, words: list, mode: str, lines: list = None, tol: float = 2.0
         return t
     best = min(cands, key=lambda c: abs(c - t))
     return best if abs(best - t) <= tol else t
+
+
+# ================= PENJAGA BAHASA (kontrak rancangan awal) =================
+# SEMUA teks klip (judul = TEKS THUMBNAIL, hook, deskripsi YouTube) WAJIB
+# mengikuti bahasa yang DIUCAPKAN di video. LLM kadang melanggar kontrak ini
+# (terbukti saat uji nyata: model fallback 503 menulis judul Indonesia utk
+# video English) -> cek DETERMINISTIK murah; kalau molor, SATU panggilan
+# poles menulis ulang teks di bahasa benar. Jalur normal (teks sudah benar)
+# TIDAK menambah biaya sama sekali.
+_LANG_NAMES = {
+    "en": "English", "id": "Bahasa Indonesia", "in": "Bahasa Indonesia",
+    "ms": "Bahasa Melayu", "ja": "Japanese", "ko": "Korean", "zh": "Chinese",
+    "ar": "Arabic", "ru": "Russian", "th": "Thai", "vi": "Vietnamese",
+    "es": "Spanish", "pt": "Portuguese", "fr": "French", "de": "German",
+    "tr": "Turkish", "hi": "Hindi", "it": "Italian", "nl": "Dutch",
+    "tl": "Filipino", "ur": "Urdu", "fa": "Persian", "he": "Hebrew",
+}
+_SCRIPTS = {   # bahasa non-Latin: judul WAJIB memuat aksara bahasanya
+    "ja": [(0x3040, 0x30FF), (0x4E00, 0x9FFF)],
+    "ko": [(0xAC00, 0xD7AF)],
+    "zh": [(0x4E00, 0x9FFF)],
+    "ar": [(0x0600, 0x06FF)],
+    "ru": [(0x0400, 0x04FF)],
+    "th": [(0x0E00, 0x0E7F)],
+    "hi": [(0x0900, 0x097F)],
+    "he": [(0x0590, 0x05FF)],
+    "ur": [(0x0600, 0x06FF)],
+    "fa": [(0x0600, 0x06FF)],
+}
+_ID_MARKERS = ("yang", "dan", "ini", "itu", "dengan", "adalah", "tidak",
+               "untuk", "karena", "ternyata", "sebenarnya", "tentang",
+               "bagaimana", "bakal", "bikin", "cuma", "manusia", "rahasia")
+
+
+def _norm_lang(code: str) -> str:
+    return (code or "").strip().lower().replace("_", "-").split("-")[0]
+
+
+def _lang_display(code: str) -> str:
+    """Baris 'Bahasa:' di prompt: kode + nama + penegasan WAJIB."""
+    c = _norm_lang(code)
+    if not c:
+        return "— (deteksi otomatis dari transkrip)"
+    return f"{code} — SEMUA teks keluaran WAJIB dalam {_LANG_NAMES.get(c, c.upper())}"
+
+
+def _text_ok(text: str, lang: str) -> bool:
+    """Heuristik murah: konsisten-kah teks ini dengan bahasa transkrip?"""
+    lang = _norm_lang(lang)
+    if not text or not lang or lang in ("id", "in", "ms"):
+        return True   # target id/ms: tak ada bahasa lain yang bisa 'molor' ke sini
+    ranges = _SCRIPTS.get(lang)
+    if ranges:
+        return any(lo <= ord(ch) <= hi for ch in text for lo, hi in ranges)
+    # bahasa Latin non-id: teks yang justru ke-Indonesia-an = pelanggaran
+    words = set(re.findall(r"[a-z]+", text.lower()))
+    return len([m for m in _ID_MARKERS if m in words]) < 2
+
+
+def _moments_language_ok(moments: list, lang: str) -> bool:
+    return all(
+        _text_ok(" ".join(str(m.get(k, "")) for k in
+                          ("title", "hook", "yt_description")), lang)
+        for m in moments)
+
+
+def _enforce_language(moments: list, lang: str) -> list:
+    """Cek deterministik + poles satu kali bila teks klip melanggar kontrak
+    bahasa. Timestamp/skor/struktur TIDAK tersentuh — hanya field teks."""
+    lang = _norm_lang(lang)
+    if not moments or not lang or _moments_language_ok(moments, lang):
+        return moments
+    name = _LANG_NAMES.get(lang, lang.upper())
+    print(f"[brain] kontrak bahasa dilanggar (harusnya {name}) -> poles penulis…",
+          flush=True)
+    items = [{"i": i, "title": m.get("title", ""), "hook": m.get("hook", ""),
+              "yt_description": m.get("yt_description", "")}
+             for i, m in enumerate(moments)]
+    prompt = (
+        f"Teks klip di bawah ditulis dalam bahasa yang SALAH — video sumber "
+        f"berbahasa {name}, jadi SEMUA teks WAJIB {name} (bahasa penontonnya "
+        f"sendiri). Tulis ulang setiap field dalam {name} yang hidup & "
+        f"memancing; makna, fakta, dan gaya sama persis. JANGAN ubah index. "
+        f"Balas HANYA JSON array, tiap elemen persis: "
+        f'{{"i": <index>, "title": "...", "hook": "...", '
+        f'"yt_description": "..."}}.\n'
+        + json.dumps(items, ensure_ascii=False)
+    )
+    try:
+        fixed = _extract_moments(_ask_role("penulis", prompt))
+        print(f"[brain] poles bahasa selesai: {len(fixed or [])} teks ditulis ulang "
+              f"dalam {name}", flush=True)
+    except Exception as e:
+        print(f"[brain] poles bahasa gagal ({type(e).__name__}) -> teks lama dipakai",
+              flush=True)
+        return moments   # poles gagal (mis. 503) -> klip tetap hidup
+    for f in (fixed or []):
+        try:
+            m = moments[int(f.get("i"))]
+        except (TypeError, ValueError, IndexError):
+            continue
+        for k in ("title", "hook", "yt_description"):
+            v = str(f.get(k, "")).strip()
+            if v:
+                m[k] = v
+    return moments
 
 
 def _validate(moments: list, words: list, duration: float, lines: list = None) -> list:
