@@ -34,23 +34,26 @@ Dibuat untuk PC low-spec: prioritas #1 adalah **kamu tidak menunggu lama** (ETA 
 
 </div>
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## 📖 Daftar Isi
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Books.png" width="28" valign="middle" alt=""/>&nbsp; Daftar Isi
 
-1. [Alur Kerja dari Sisi Pengguna](#alur-kerja-dari-sisi-pengguna)
-2. [Fitur Lengkap](#fitur-lengkap)
-3. [Arsitektur & Pipeline Detail](#arsitektur--pipeline-detail)
-4. [Peta Kode & Cara Memodifikasi](#peta-kode--cara-memodifikasi)
-5. [Keputusan Desain & Hasil Benchmark](#keputusan-desain--hasil-benchmark)
-6. [Panduan Setup Step-by-Step](#panduan-setup-step-by-step)
-7. [Referensi Konfigurasi (.env)](#referensi-konfigurasi-env)
-8. [FAQ & Troubleshooting](#faq--troubleshooting)
-9. [Roadmap](#roadmap)
+1. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Movie%20Camera.png" width="16" valign="middle" alt=""/> [Alur Kerja dari Sisi Pengguna](#alur-kerja-dari-sisi-pengguna)
+2. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="16" valign="middle" alt=""/> [Fitur Lengkap](#fitur-lengkap)
+3. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="16" valign="middle" alt=""/> [Arsitektur & Pipeline Detail](#arsitektur--pipeline-detail)
+4. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Laptop.png" width="16" valign="middle" alt=""/> [Peta Kode & Cara Memodifikasi](#peta-kode--cara-memodifikasi)
+5. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Chart%20Increasing.png" width="16" valign="middle" alt=""/> [Keputusan Desain & Hasil Benchmark](#keputusan-desain--hasil-benchmark)
+6. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Wrench.png" width="16" valign="middle" alt=""/> [Panduan Setup Step-by-Step](#panduan-setup-step-by-step)
+7. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Clipboard.png" width="16" valign="middle" alt=""/> [Referensi Konfigurasi (.env)](#referensi-konfigurasi-env)
+8. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Magnifying%20Glass%20Tilted%20Left.png" width="16" valign="middle" alt=""/> [FAQ & Troubleshooting](#faq--troubleshooting)
+9. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Chart%20Increasing.png" width="16" valign="middle" alt=""/> [Roadmap](#roadmap)
+10. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Notebook.png" width="16" valign="middle" alt=""/> [Uji Tanpa PC (Google Colab)](#uji-tanpa-pc-google-colab)
+11. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Package.png" width="16" valign="middle" alt=""/> [Deploy ke VPS (siap publik)](#deploy-ke-vps-siap-publik)
+12. <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Scroll.png" width="16" valign="middle" alt=""/> [Lisensi](#lisensi)
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Alur Kerja dari Sisi Pengguna
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Movie%20Camera.png" width="28" valign="middle" alt=""/>&nbsp; Alur Kerja dari Sisi Pengguna
 
 ```
 1. Buka http://localhost:8000
@@ -64,9 +67,9 @@ Dibuat untuk PC low-spec: prioritas #1 adalah **kamu tidak menunggu lama** (ETA 
 
 Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame di-cache di folder `downloads/`.
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Fitur Lengkap
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="28" valign="middle" alt=""/>&nbsp; Fitur Lengkap
 
 | Fitur | Detail |
 |---|---|
@@ -83,7 +86,7 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | **Potongan presisi** | Start/end di-snap ke timestamp kata asli (toleransi 2 dtk) + seek akurat frame-level — tak lebih, tak kurang. |
 | **Face tracking v2** | Semua wajah di-track; "siapa bicara" dari gerakan mulut (window ±2 sampel — gesit); hysteresis anti flip-flop; **look-ahead S-curve C1** (transisi smoothstep mulus antar pembicara, kamera tiba ~saat pembicara baru mulai bicara); kecepatan pan di-clamp; **pan interpolasi KUBIK Catmull-Rom — kecepatan kontinu per-frame, tanpa 'macet skala kecil'**. |
 | **Smart Placement v4** | Subtitle tidak pernah menutupi: wajah/objek utama (collision bbox, geser atas kepala/bawah dagu), UI platform (safe zone kanan & bawah ala TikTok/Reels), teks bawaan video (deteksi baris teks — pengganti OCR ringan), dan area saliency (objek menarik mata dihindari). Semua numpang di pass sampling wajah = biaya nyaris nol. |
-| **Subtitle premium v3** | Font **Komika Axis**, Huruf Besar Di Awal, teks bersih tanpa titik/koma, **kata muncul satu-satu saat diucapkan (pop + bounce)**, **KARAOKE STABILO biru MrBeast**: kata yang sedang diucapkan biru, selesai → putih, biru berjalan mengikuti ucapan terus-menerus, ukuran wajar & posisi bawah layar (ala Opus/snazo), naik otomatis kalau menutupi wajah. |
+| **Subtitle premium v3.1** | Font **Komika Axis**, Huruf Besar Di Awal, teks bersih tanpa titik/koma, **kata muncul satu-satu saat diucapkan (pop + bounce)**, **KARAOKE STABILO biru MrBeast**: kata yang sedang diucapkan biru, selesai → putih, biru berjalan mengikuti ucapan terus-menerus, ukuran wajar & posisi bawah layar (ala Opus/snazo), naik otomatis kalau menutupi wajah. **v3.1**: karaoke PREISI per-ms + micro-lead 25ms + bounce tuntas per kata; **SPLIT LAYER duo** — frame terbelah atas-bawah (podcast di atas + gameplay/demo di bawah) -> subtitle dobel di tengah tiap belahan, transisi crossfade 120ms (frame normal tak tersentuh). |
 | **Grade "Ultra Settings"** | eq (bayangan pekat) + hue (kulit hangat) + unsharp 3x3 (texture tajam) — dipilih dari benchmark biaya CPU. |
 | **Motion blur ala game** | Aktif HANYA saat kamera pan (tmix), halus, subtitle tetap tajam. |
 | **Output** | MP4 9:16, 1080x1920 (auto 720x1280 kalau sumber kecil), H.264 + AAC, auto-detect encoder GPU. |
@@ -91,9 +94,9 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 | **Thumbnail otomatis WAJIB (default NYALA)** | Setiap klip PASTI punya thumbnail .jpg 1080x1920 — tidak pernah gagal/hilang: rantai fallback 4 lapis (frame wajah terbaik → frame terpajam → frame klip jadi → kartu gradient). Pemilihan frame ala thumbnail profesional: wajah terbesar + mulut terbuka (ekspresi = klik) + ketajaman + exposure waras; crop 9:16 wajah di 40% atas + grade kontras/saturasi/unsharp sama selera klip. **Teks judul KHUSUS PODCAST** (klip `content_type` podcast/interview — jenis konten lain tetap polos): judul klip dari library dirender putih bersih TANPA outline, hanya shadow hitam blur lebar 3-lapis yang halus menutupi area teks; ukuran font auto-fit ke layar; emoji kuning kartun tersenyum SELALU menumpang di atas teks; + 1 emoji topik akurat (`topic_tag` dipilih otak Gemini: finansial → 💰, dst — tag tak dikenal = tanpa emoji, tidak pernah ngaco) di posisi strategis otomatis (samping teks / menumpang di ujung baris pertama). Font: letakkan file `.ttf` milikmu (mis. Liberica — pastikan lisensimu valid) di `assets/fonts/`, fallback otomatis ke font sistem bold; emoji asset Noto (Google, OFL) diunduh sekali lalu cache permanen. Gagal apa pun → thumbnail terbit polos (hukum tidak berubah). Disajikan via `/api/thumbs/<video>/<clip>` + kolom `thumb` di meta; UI/frontend cukup baca meta.json. |
 | **Diarization (opsional, default MATI)** | Label pembicara per baris transkrip (pyannote, CPU) → otak tahu SIAPA bicara apa. Monolog otomatis diabaikan (label dibuang). Gagal apa pun (token/library tidak ada) → job jalan normal tanpa label, tidak pernah error. Setup: `pip install -r requirements-diarize.txt`, akun HuggingFace gratis + accept license model, lalu `.env`: `DIARIZE=1` dan `DIARIZE_TOKEN=hf_xxx`. |
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Arsitektur & Pipeline Detail
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="28" valign="middle" alt=""/>&nbsp; Arsitektur & Pipeline Detail
 
 ```
                               ┌──────────────────────────────────────────┐
@@ -144,9 +147,9 @@ Video yang sama tidak diproses dua kali — download, audio, dan cuplikan frame 
 
 **⑧ Library** — klip disimpan `library/<video_id>/clip_01.mp4` dst + `meta.json` (judul, skor, hook, dll). Frontend mem-polling `GET /api/jobs/{id}` untuk progress, lalu `GET /api/library` untuk grid klip.
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Peta Kode & Cara Memodifikasi
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Laptop.png" width="28" valign="middle" alt=""/>&nbsp; Peta Kode & Cara Memodifikasi
 
 > Prinsip: **satu file = satu keputusan desain.** Mau ubah sesuatu? Edit satu tempat yang benar.
 
@@ -175,9 +178,9 @@ jobs/        progress job sementara + file kerja render
 models/      model onnx YuNet + mask (auto-download)
 ```
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Keputusan Desain & Hasil Benchmark
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Chart%20Increasing.png" width="28" valign="middle" alt=""/>&nbsp; Keputusan Desain & Hasil Benchmark
 
 Semua pilihan visual/performa dipilih dari **pengukuran nyata**, bukan selera:
 
@@ -203,9 +206,9 @@ Keputusan lain:
 - **1 job antre sekaligus**: CPU low-spec tidak tersedak; ETA tetap jujur karena antrean kelihatan.
 - **Seek `-ss` sebelum `-i`**: frame-akurat saat transcode (potongan pas, tidak mulai dari keyframe terdekat).
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Panduan Setup Step-by-Step
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Wrench.png" width="28" valign="middle" alt=""/>&nbsp; Panduan Setup Step-by-Step
 
 ### Prasyarat
 - **Python 3.10+** — cek: `python --version`
@@ -241,9 +244,9 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ### Pemakaian pertama
 Saat job pertama jalan, model **YuNet onnx (±1 MB)** otomatis terunduh ke `models/`, dan model whisper `small` (~460 MB) otomatis terunduh sekali oleh faster-whisper. Job berikutnya jauh lebih cepat.
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Referensi Konfigurasi (.env)
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Clipboard.png" width="28" valign="middle" alt=""/>&nbsp; Referensi Konfigurasi (.env)
 
 Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 
@@ -310,9 +313,9 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 | `HIGHLIGHT_COLOR` | FFAA00 | Biru stabilo karaoke MrBeast (#00AAFF, format BGR ASS) |
 | `KARAOKE_FADE_MS` | 70 | Kecepatan transisi warna biru↔putih (ms) |
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## FAQ & Troubleshooting
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Magnifying%20Glass%20Tilted%20Left.png" width="28" valign="middle" alt=""/>&nbsp; FAQ & Troubleshooting
 
 **Kok lama?** Cek langkah mana yang lambat di progress bar, lalu:
 - Transkripsi lambat → `WHISPER_MODEL=base`
@@ -331,16 +334,16 @@ Semua bisa diubah tanpa sentuh kode. Kosongkan/gunakan nilai default kalau ragu.
 
 **PC nge-freez saat render** — pastikan tidak ada job lain jalan; pipeline sudah antre 1 job sekaligus, tapi browser preview 1080x1920 juga makan RAM.
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## Uji Tanpa PC (Google Colab)
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Notebook.png" width="28" valign="middle" alt=""/>&nbsp; Uji Tanpa PC (Google Colab)
 
 `colab_test.ipynb` menjalankan pipeline penuh di Colab: setup otomatis, API key Gemini via Secrets/input,
 video via URL atau upload file, progress + ETA live, preview klip inline + ZIP unduhan.
 Cocok untuk: coba pertama kali, demo, atau uji perubahan tanpa repot PC low-spec.
 ( Pipeline lokal & Colab pakai kode yang sama persis dari repo ini. )
 
-## Deploy ke VPS (siap publik)
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Package.png" width="28" valign="middle" alt=""/>&nbsp; Deploy ke VPS (siap publik)
 
 Server ini bisa dititipkan di VPS murah mana pun (butuh ~2 GB RAM):
 
@@ -369,7 +372,7 @@ aplikasi (mingguan), IG Graph API butuh akun business + review Meta.
 
 Belum ada (roadmap): login multi-user penuh, pembayaran.
 
-## Roadmap
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Chart%20Increasing.png" width="28" valign="middle" alt=""/>&nbsp; Roadmap
 
 - [ ] Test drive di video nyata → kalibrasi rasa (grade & tracking)
 - [ ] Prompt otak v3: contoh few-shot per genre (gaming/podcast/vlog)
@@ -382,9 +385,9 @@ Belum ada (roadmap): login multi-user penuh, pembayaran.
 
 * dibangun dengan prinsip: bersih, 1 file = 1 tanggung jawab, semua keputusan terukur — supaya agent masa depan (atau kamu) bisa lanjut mengembangkannya tanpa membuka kotak hitam.*
 
----
+<img src="https://capsule-render.vercel.app/api?type=rect&height=2&color=0:00C9A7,100:4F7CFF" width="100%" />
 
-## 📜 Lisensi
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Scroll.png" width="28" valign="middle" alt=""/>&nbsp; Lisensi
 
 <div align="center">
 
