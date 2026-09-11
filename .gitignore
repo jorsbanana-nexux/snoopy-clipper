@@ -1,4 +1,7 @@
 .env
+cookies.txt
+*_cookies.txt
+cookies_*.txt
 downloads/
 library/
 jobs/

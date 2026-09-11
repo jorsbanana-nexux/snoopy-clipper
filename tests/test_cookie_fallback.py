@@ -61,3 +61,86 @@ def test_non_cookie_download_error_still_raises(monkeypatch):
     import pytest
     with pytest.raises(yt_dlp.utils.DownloadError, match="unavailable"):
         downloader._extract({"cookiesfrombrowser": ("chrome",)}, "https://z", download=False)
+
+
+def test_cookie_opts_falls_back_to_cookiefile_once_browser_broken(monkeypatch, tmp_path):
+    """Bug lama: begitu _cookies_broken=True, _cookie_opts() balikin {} langsung
+    -- cookies.txt yang sudah ditaruh user TIDAK PERNAH dilihat lagi. Sekarang
+    harus tetap jatuh ke cookies.txt kalau filenya ada."""
+    cf = tmp_path / "cookies.txt"
+    cf.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setattr(downloader.config, "COOKIES_FILE", str(cf))
+    monkeypatch.setattr(downloader.config, "COOKIES_FROM_BROWSER", "chrome")
+    monkeypatch.setattr(downloader, "_cookies_broken", True)   # browser sudah terbukti rusak
+    opts = downloader._cookie_opts()
+    assert opts == {"cookiefile": str(cf)}
+
+
+def test_cookie_opts_no_cookiefile_when_broken_and_no_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader.config, "COOKIES_FILE", str(tmp_path / "tidak_ada.txt"))
+    monkeypatch.setattr(downloader.config, "COOKIES_FROM_BROWSER", "chrome")
+    monkeypatch.setattr(downloader, "_cookies_broken", True)
+    assert downloader._cookie_opts() == {}
+
+
+def test_extract_falls_back_to_cookiefile_before_giving_up_bare(monkeypatch, tmp_path):
+    """Skenario nyata: COOKIES_FROM_BROWSER=chrome gagal (Chrome App-Bound
+    Encryption / terkunci OS) TAPI user sudah punya cookies.txt -> video yang
+    butuh login (age-restricted dsb) tetap harus lolos lewat cookies.txt,
+    BUKAN langsung dianggap 'tidak tersedia' tanpa cookie sama sekali."""
+    monkeypatch.setattr(downloader, "_cookies_broken", False)
+    cf = tmp_path / "cookies.txt"
+    cf.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setattr(downloader.config, "COOKIES_FILE", str(cf))
+    calls = []
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def extract_info(self, url, download=False):
+            calls.append(dict(self.opts))
+            if self.opts.get("cookiesfrombrowser"):
+                raise yt_dlp.utils.DownloadError(
+                    "ERROR: Could not copy Chrome cookie database. See "
+                    "https://github.com/yt-dlp/yt-dlp/issues/7271 for more info")
+            if self.opts.get("cookiefile"):
+                return {"id": "ok-via-cookiefile"}
+            raise yt_dlp.utils.DownloadError("ERROR: [youtube] x: This video is not available")
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeYDL)
+    info = downloader._extract({"cookiesfrombrowser": ("chrome",)}, "https://x", download=False)
+    assert info["id"] == "ok-via-cookiefile"
+    assert len(calls) == 2
+    assert calls[1]["cookiefile"] == str(cf)
+
+
+def test_extract_falls_back_to_bare_when_cookiefile_also_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "_cookies_broken", False)
+    cf = tmp_path / "cookies.txt"
+    cf.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setattr(downloader.config, "COOKIES_FILE", str(cf))
+    calls = []
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def extract_info(self, url, download=False):
+            calls.append(dict(self.opts))
+            if self.opts.get("cookiesfrombrowser"):
+                raise yt_dlp.utils.DownloadError("ERROR: Could not copy Chrome cookie database.")
+            if self.opts.get("cookiefile"):
+                raise yt_dlp.utils.DownloadError("ERROR: cookies.txt expired/invalid cookie")
+            return {"id": "ok-bare"}
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeYDL)
+    info = downloader._extract({"cookiesfrombrowser": ("chrome",)}, "https://x", download=False)
+    assert info["id"] == "ok-bare"
+    assert len(calls) == 3
