@@ -379,30 +379,68 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
     return tw, th, enc_name
 
 
-def mix_bgm_pass(in_path, bgm, loop=False, clip_dur=None):
-    """Pass BGM SETELAH concat dead-air: video stream-copy (nyaris nol biaya
-    CPU), audio dicampur dengan fade UTUH satu kali — jahitan loop tetap rapat."""
+def mix_bgm_pass(in_path, bgm, loop=False, clip_dur=None,
+                 sfx_times=None, hook_pop=False):
+    """Pass audio SETELAH render/concat (video stream-copy, nyaris nol
+    biaya CPU): campur BGM (fade utuh satu kali) + SFX whoosh di tiap
+    titik sfx_times (timeline final, detik) + pop lembut saat hook muncul.
+    bgm boleh None (SFX saja). Tak ada yang bisa dicampur -> no-op."""
+    from . import sfx as _sfx
     in_path = os.path.abspath(in_path)
     if not clip_dur or clip_dur <= 0:
         clip_dur = probe_duration(in_path)
-    vol = float(bgm.get("volume", 0.15))
-    if loop:
-        fin = min(0.35, clip_dur / 8)
-        fout_d = min(0.35, clip_dur / 8)
-    else:
-        fin = min(0.8, clip_dur / 4)
-        fout_d = min(1.2, clip_dur / 4)
-    a = (f"[0:a]apad[a0];"
-         f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
-         f"volume={vol:.3f},"
-         f"afade=t=in:st=0:d={fin:.3f},"
-         f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm];"
-         f"[a0][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]")
+    inputs = ["-i", in_path]
+    chains = ["[0:a]apad[a0]"]
+    mixes = ["[a0]"]
+    idx = 1
+    if bgm:
+        vol = float(bgm.get("volume", 0.15))
+        if loop:
+            fin = min(0.35, clip_dur / 8)
+            fout_d = min(0.35, clip_dur / 8)
+        else:
+            fin = min(0.8, clip_dur / 4)
+            fout_d = min(1.2, clip_dur / 4)
+        inputs += ["-stream_loop", "-1", "-i", str(bgm["path"])]
+        chains.append(
+            f"[{idx}:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
+            f"volume={vol:.3f},"
+            f"afade=t=in:st=0:d={fin:.3f},"
+            f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm]")
+        mixes.append("[bgm]")
+        idx += 1
+    if config.SFX:
+        assets = None
+        try:
+            assets = _sfx.ensure()   # SFX tak boleh PERNAH mematikan render
+        except Exception:
+            assets = None
+        if assets:
+            for t in (sfx_times or []):
+                if not (0 <= t < max(0.3, clip_dur - 0.2)):
+                    continue
+                ms = max(0, int(t * 1000))
+                inputs += ["-i", str(assets["whoosh"])]
+                chains.append(f"[{idx}:a]adelay={ms}:all=1,"
+                              f"volume={config.SFX_VOLUME:.2f}[w{idx}]")
+                mixes.append(f"[w{idx}]")
+                idx += 1
+            if hook_pop and clip_dur > 0.6:
+                inputs += ["-i", str(assets["pop"])]
+                chains.append(f"[{idx}:a]adelay=150:all=1,"
+                              f"volume={max(0.2, config.SFX_VOLUME):.2f}[p{idx}]")
+                mixes.append(f"[p{idx}]")
+                idx += 1
+    if len(mixes) < 2:
+        return  # tak ada BGM/SFX yang bisa dicampur -> no-op
+    aout = ("".join(mixes) +
+            f"amix=inputs={len(mixes)}:duration=longest:"
+            f"dropout_transition=0:normalize=0[aout]")
     tmp = str(in_path) + ".tmp.mp4"
     subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-         "-i", in_path, "-stream_loop", "-1", "-i", str(bgm["path"]),
-         "-filter_complex", a, "-map", "0:v", "-map", "[aout]",
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"] + inputs +
+        ["-filter_complex", ";".join(chains + [aout]),
+         "-map", "0:v", "-map", "[aout]",
          "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
          "-t", f"{clip_dur:.3f}", tmp],
         check=True, cwd=os.path.dirname(in_path) or ".")

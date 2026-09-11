@@ -862,15 +862,17 @@ def _overlay_assets(tw, th, workdir, m, clip_id):
 def _render_klip(video_path, start, end, words, keyframes, focus_y, vision,
                  m, src_w, src_h, tw, th, ass_rel, out_path, workdir,
                  on_progress, bgm_track, wm_rel, hook_rel, hook_dur=2.6):
-    """Render satu klip dengan daging lengkap: watermark + hook + voice
-    treatment (di dalam render_clip) + DEAD-AIR jump-cut bila ada jeda napas
-    panjang (subtitle ikut digeser per sub, BGM dicampur setelah concat).
-    Tanpa jeda -> SATU PASS normal: perilaku lama + overlay + voice."""
+    """Render satu klip dengan daging lengkap. Dua jalur:
+    - DEAD-AIR (ada jeda napas): sub dirender per segmen (subtitle & crop
+      digeser) -> concat -c copy -> whoosh di tiap jahitan.
+    - NORMAL: SATU PASS -> tanpa jahitan.
+    Keduanya ditutup SATU pass audio seragam (BGM fade utuh + SFX whoosh
+    awal + pop hook) dengan video stream-copy — murah di PC low-spec."""
     from . import deadair as _deadair
     segs = _deadair.segments(words, start, end)
     if len(segs) > 1:
         hd = min(hook_dur, max(0.5, (segs[0][1] - segs[0][0]) * 0.45))
-        subs = []
+        subs, bounds, acc = [], [], 0.0
         stem = Path(out_path).stem
         for j, (ss, se) in enumerate(segs):
             sub_ass = workdir / f"{stem}_da{j}.ass"
@@ -885,14 +887,18 @@ def _render_klip(video_path, start, end, words, keyframes, focus_y, vision,
                 src_w, src_h, sub_out, workdir, on_progress=on_progress,
                 wm_rel_path=wm_rel,
                 hook_rel_path=(hook_rel if j == 0 else None), hook_dur=hd)
+            acc += se - ss
+            if j < len(segs) - 1:
+                bounds.append(round(acc, 3))
             subs.append(sub_out)
         cutter.concat_clips(subs, out_path)
-        if bgm_track:  # BGM satu fade utuh SETELAH concat — video tak di-encode ulang
-            cutter.mix_bgm_pass(out_path, bgm_track, loop=bool(m.get("loop")))
+        cutter.mix_bgm_pass(out_path, bgm_track, loop=bool(m.get("loop")),
+                             sfx_times=[0.0] + bounds, hook_pop=bool(hook_rel))
     else:
         cutter.render_clip(video_path, start, end, ass_rel, keyframes,
                            src_w, src_h, out_path, workdir,
                            on_progress=on_progress,
-                           bgm=bgm_track, loop=bool(m.get("loop")),
                            wm_rel_path=wm_rel, hook_rel_path=hook_rel,
                            hook_dur=hook_dur)
+        cutter.mix_bgm_pass(out_path, bgm_track, loop=bool(m.get("loop")),
+                            sfx_times=[0.0], hook_pop=bool(hook_rel))
