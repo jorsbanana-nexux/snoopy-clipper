@@ -1,12 +1,38 @@
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&height=160&color=0:00C9A7,100:4F7CFF&section=header" width="100%" />
+
 # 🎬 Snoopy Clipper
 
-AI web clipper **sederhana & bersih** — 1 otak (Gemini), input URL, keluar shorts vertikal 9:16 siap download.
+**AI Web Clipper Profesional — 1 Otak Gemini · 1 Klik · Shorts 9:16 Siap Tayang**
+
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&pause=1200&color=4F7CFF&center=true&vCenter=true&width=640&lines=Tempel+URL+%E2%86%92+Klik+GetClips+%E2%86%92+Shorts+Siap+Viral;Karaoke+Stabilo+Presisi+Per-Kata;Split+Layer+Duo+ala+OpusClip;Naturally+Loopable+Clips+%E2%88%9E;Auto-Post+ke+YouTube+Shorts;Multi-User+%2B+Billing+Siap+Jualan" alt="animasi" />
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/FastAPI-009485?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white" />
+</p>
+<p>
+  <img src="https://img.shields.io/badge/tests-89%2F89%20passed-brightgreen?style=flat-square" />
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/Docker-siap%20deploy-2496ED?style=flat-square&logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/YouTube-auto--post-FF0000?style=flat-square&logo=youtube&logoColor=white" />
+  <img src="https://img.shields.io/badge/Midtrans-billing-3D68EB?style=flat-square" />
+  <img src="https://img.shields.io/badge/PRs-welcome-FF69B4?style=flat-square" />
+</p>
+
+**Editor profesional, bukan clipper kaku.** Input URL → keluar shorts vertikal 9:16:
+potongan presisi, face tracking, subtitle MrBeast-style, grade ultra, motion blur.
 Dibuat untuk PC low-spec: prioritas #1 adalah **kamu tidak menunggu lama** (ETA realtime + koreksi otomatis).
 
-> **Coba tanpa setup di PC:** buka [`colab_test.ipynb`](colab_test.ipynb) di Google Colab
-> (File → Upload notebook, atau jalankan via [colab.research.google.com](https://colab.research.google.com)) —
+> 🧪 **Coba tanpa setup di PC:** buka [`colab_test.ipynb`](colab_test.ipynb) di Google Colab —
 > clone, install, uji pipeline penuh, dan preview hasil klip langsung di notebook. Cukup siapkan API key Gemini.
 > Mode **URL** (YouTube/TikTok/IG) atau **UPLOAD** file mp4 sendiri (kebal blokir YouTube di server Colab).
+
+<img src="https://capsule-render.vercel.app/api?type=rect&height=3&color=4F7CFF" width="100%" />
+
+</div>
 
 ---
 
@@ -355,3 +381,34 @@ Belum ada (roadmap): login multi-user penuh, pembayaran.
 ---
 
 * dibangun dengan prinsip: bersih, 1 file = 1 tanggung jawab, semua keputusan terukur — supaya agent masa depan (atau kamu) bisa lanjut mengembangkannya tanpa membuka kotak hitam.*
+
+---
+
+## 📜 Lisensi
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/Lisensi-MIT-0078D4?style=for-the-badge&labelColor=0f172a" />
+
+</div>
+
+Proyek ini dilisensikan di bawah **Lisensi MIT** — bebas dipakai, disalin, dimodifikasi,
+dan dikomersialkan, dengan syarat menyertakan pemberitahuan hak cipta pada setiap salinan.
+Teks lengkap ada di file [LICENSE](LICENSE).
+
+> 💡 **Catatan untuk komersialisasi:** MIT membebaskan kamu menjual layanan berbasis
+> Snoopy Clipper (SaaS/compiled) tanpa membuka kode modifikasimu — cukup LICENSE tetap
+> disertakan. BGM bawaan berlisensi **CC BY 4.0** (kredit otomatis sudah dicantumkan
+> sistem di setiap klip). Font subtitle & thumbnail yang direkomendasikan bebas komersial.
+
+---
+
+<div align="center">
+
+**Snoopy Clipper** — dibuat dengan ❤️ oleh [jorsbanana-nexux](https://github.com/jorsbanana-nexux)
+
+*Editor profesional, bukan clipper kaku — klip yang terasa hidup.*
+
+<img src="https://capsule-render.vercel.app/api?type=waving&height=120&color=0:4F7CFF,100:00C9A7&section=footer" width="100%" />
+
+</div>
