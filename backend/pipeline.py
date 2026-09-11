@@ -556,9 +556,10 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
                         eta_seconds=max(3.0, rsum * (1 - p)))
 
             bgm_track = _bgm_track(job_id, m) if config.BGM else None
-            cutter.render_clip(video_path, start, end, ass_file.name, keyframes,
-                               src_w, src_h, out_path, workdir, on_progress=on_progress,
-                               bgm=bgm_track, loop=bool(m.get("loop")))
+            wm_rel, hook_rel, hook_dur = _overlay_assets(tw, th, workdir, m, clip_id)
+            _render_klip(video_path, start, end, words, keyframes, focus_y, vision,
+                         m, src_w, src_h, tw, th, ass_file.name, out_path, workdir,
+                         on_progress, bgm_track, wm_rel, hook_rel, hook_dur)
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
                 thumbnail.make_thumb(video_path, start, end, out_path, vdir / f"{clip_id}.jpg",
@@ -688,9 +689,10 @@ def _render_ranged(job_id, info, moments, full_words):
                         eta_seconds=max(3.0, rsum * (1 - p)))
 
             bgm_track = _bgm_track(job_id, m) if config.BGM else None
-            cutter.render_clip(seg_path, 0.0, seg_dur, ass_file.name, keyframes,
-                               src_w, src_h, out_path, workdir, on_progress=on_progress,
-                               bgm=bgm_track, loop=bool(m.get("loop")))
+            wm_rel, hook_rel, hook_dur = _overlay_assets(tw, th, workdir, m, clip_id)
+            _render_klip(seg_path, 0.0, seg_dur, words, keyframes, focus_y, vision,
+                         m, src_w, src_h, tw, th, ass_file.name, out_path, workdir,
+                         on_progress, bgm_track, wm_rel, hook_rel, hook_dur)
             _enforce_full_audio(job_id, i + 1, total, out_path)
             if config.THUMBNAIL:
                 thumbnail.make_thumb(seg_path, 0.0, seg_dur, out_path, vdir / f"{clip_id}.jpg",
@@ -836,3 +838,61 @@ def _finish(job_id, info):
                seconds=(round(time.time() - created, 1) if created else None),
                clips=len(j.get("clips") or []),
                duration_source=round(j.get("duration") or 0))
+
+
+# ===================== DAGING KLIP: overlay + dead-air =====================
+def _overlay_assets(tw, th, workdir, m, clip_id):
+    """PNG watermark + hook (daging klip). Overlay TIDAK PERNAH boleh
+    mematikan render — kegagalan apa pun -> overlay dilewati."""
+    from . import overlays as _overlays
+    wm_rel = hook_rel = None
+    try:
+        if config.WATERMARK:
+            wm_rel = _overlays.make_watermark(tw, th, workdir).name
+        if config.HOOK_OVERLAY and m.get("hook"):
+            p = _overlays.make_hook(m.get("hook", ""), tw, th,
+                                    Path(workdir) / f"{clip_id}_hook.png")
+            if p:
+                hook_rel = p.name
+    except Exception:
+        wm_rel = hook_rel = None
+    return wm_rel, hook_rel, 2.6
+
+
+def _render_klip(video_path, start, end, words, keyframes, focus_y, vision,
+                 m, src_w, src_h, tw, th, ass_rel, out_path, workdir,
+                 on_progress, bgm_track, wm_rel, hook_rel, hook_dur=2.6):
+    """Render satu klip dengan daging lengkap: watermark + hook + voice
+    treatment (di dalam render_clip) + DEAD-AIR jump-cut bila ada jeda napas
+    panjang (subtitle ikut digeser per sub, BGM dicampur setelah concat).
+    Tanpa jeda -> SATU PASS normal: perilaku lama + overlay + voice."""
+    from . import deadair as _deadair
+    segs = _deadair.segments(words, start, end)
+    if len(segs) > 1:
+        hd = min(hook_dur, max(0.5, (segs[0][1] - segs[0][0]) * 0.45))
+        subs = []
+        stem = Path(out_path).stem
+        for j, (ss, se) in enumerate(segs):
+            sub_ass = workdir / f"{stem}_da{j}.ass"
+            sub_ass.write_text(subtitles.build_ass(
+                words, focus_y, vision, tw, th, ss, se,
+                layout=m.get("layout"), layout_events=m.get("layout_events")),
+                encoding="utf-8")
+            sub_out = workdir / f"{stem}_da{j}.mp4"
+            cutter.render_clip(
+                video_path, ss, se, sub_ass.name,
+                _deadair.rebase_keyframes(keyframes, ss - start, se - start),
+                src_w, src_h, sub_out, workdir, on_progress=on_progress,
+                wm_rel_path=wm_rel,
+                hook_rel_path=(hook_rel if j == 0 else None), hook_dur=hd)
+            subs.append(sub_out)
+        cutter.concat_clips(subs, out_path)
+        if bgm_track:  # BGM satu fade utuh SETELAH concat — video tak di-encode ulang
+            cutter.mix_bgm_pass(out_path, bgm_track, loop=bool(m.get("loop")))
+    else:
+        cutter.render_clip(video_path, start, end, ass_rel, keyframes,
+                           src_w, src_h, out_path, workdir,
+                           on_progress=on_progress,
+                           bgm=bgm_track, loop=bool(m.get("loop")),
+                           wm_rel_path=wm_rel, hook_rel_path=hook_rel,
+                           hook_dur=hook_dur)

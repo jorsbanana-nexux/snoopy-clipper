@@ -257,10 +257,24 @@ def extract_frames(video_path, out_dir, duration: float) -> float:
     return interval
 
 
+def _voice_chain() -> str:
+    """Daging audio: suara manusia diperlakukan ala studio — highpass buang
+    gemuruh, denoise desis ringan, kompresi rapat, loudness -14 LUFS
+    (standar platform: YT/TikTok/IG). VOICE_TREAT=0 = polos (perilaku lama)."""
+    if not config.VOICE_TREAT:
+        return ""
+    return ("highpass=f=80,afftdn=nr=12:nf=-28,"
+            "acompressor=threshold=-18dB:ratio=2.5:attack=8:release=120,"
+            "loudnorm=I=-14:TP=-1.5:LRA=11")
+
+
 def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
-                out_path, workdir, on_progress=None, bgm=None, loop=False):
+                out_path, workdir, on_progress=None, bgm=None, loop=False,
+                wm_rel_path=None, hook_rel_path=None, hook_dur=2.6):
     """
-    Render satu klip (satu pass): crop pintar + motion blur + subtitle burn + encode.
+    Render satu klip (satu pass): crop pintar + motion blur + grade + subtitle
+    burn + WATERMARK (kiri-atas) + HOOK overlay (awal klip) + VOICE TREATMENT
+    (-14 LUFS) + BGM mix + encode. Semua fitur daging opsional (None/flag .env).
     Motion blur diaplikasikan SEBELUM subtitle supaya teks selalu tajam.
     on_progress(frac 0..1) dipanggil berkala untuk update ETA.
     -> (tw, th, nama_encoder)
@@ -280,49 +294,67 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
         parts.append(f"ass='{ass_rel_path}'")
     vf = ",".join(parts)
 
-    if bgm:  # BGM: satu pass yang sama, volume rendah + fade — nyaris nol waktu tambah
-        vol = float(bgm.get("volume", 0.15))
-        if loop:
-            # Klip LOOP ALAMI: fade BGM pendek-suprapat supaya jahitan loop
-            # nyaris tak terasa — penonton memutar ulang tanpa sadar sudah balik awal.
-            fin = min(0.35, clip_dur / 8)
-            fout_d = min(0.35, clip_dur / 8)
+    voice = _voice_chain()
+    a_pad = (voice + ",apad") if voice else "apad"
+
+    # ---- overlay PNG: watermark (kiri-atas, sepanjang klip) + hook (awal) ----
+    overlays = []
+    if wm_rel_path:
+        overlays.append((wm_rel_path, "main_w*0.035", "main_h*0.025", None))
+    if hook_rel_path:
+        hd = max(0.4, min(hook_dur, clip_dur * 0.9))
+        overlays.append((hook_rel_path, "(main_w-overlay_w)/2", "main_h*0.085",
+                         f"between(t,0.15,{hd:.2f})"))
+
+    if bgm or overlays:
+        base = 2 if bgm else 1
+        chains = [f"[0:v]{vf}[v0]"]
+        last = "v0"
+        for k, (png, ox, oy, enable) in enumerate(overlays):
+            nxt = f"vo{k}"
+            e = f":enable='{enable}'" if enable else ""
+            chains.append(f"[{last}][{base + k}:v]overlay=x='{ox}':y='{oy}'{e}[{nxt}]")
+            last = nxt
+        if bgm:  # BGM: satu pass yang sama, volume rendah + fade
+            vol = float(bgm.get("volume", 0.15))
+            if loop:
+                # Klip LOOP ALAMI: fade BGM pendek-suprapat supaya jahitan loop
+                # nyaris tak terasa — penonton memutar ulang tanpa sadar.
+                fin = min(0.35, clip_dur / 8)
+                fout_d = min(0.35, clip_dur / 8)
+            else:
+                fin = min(0.8, clip_dur / 4)
+                fout_d = min(1.2, clip_dur / 4)
+            # apad: suara sumber bisa LEBIH PENDEK dari video (padding keyframe)
+            # -> tanpa ini audio & BGM mati mendadak di ekor klip.
+            chains.append(f"[0:a]{a_pad}[a0]")
+            chains.append(
+                f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
+                f"volume={vol:.3f},"
+                f"afade=t=in:st=0:d={fin:.3f},"
+                f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm]")
+            chains.append("[a0][bgm]amix=inputs=2:duration=longest:"
+                          "dropout_transition=0:normalize=0[aout]")
         else:
-            fin = min(0.8, clip_dur / 4)
-            fout_d = min(1.2, clip_dur / 4)
-        # apad + duration=longest: suara sumber bisa LEBIH PENDEK dari video
-        # (potongan rentang keyframe: video punya padding beberapa detik)
-        # -> tanpa ini audio & BGM mati mendadak di ekor klip. apad menjamin
-        # audio berbunyi sampai akhir klip persis sepanjang video.
-        a_complex = (
-            f"[0:v]{vf}[v];"
-            f"[0:a]apad[a0];"
-            f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
-            f"volume={vol:.3f},"
-            f"afade=t=in:st=0:d={fin:.3f},"
-            f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm];"
-            f"[a0][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]"
-        )
-        cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
-            "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
-            "-stream_loop", "-1", "-i", str(bgm["path"]),
-            "-filter_complex", a_complex,
-            "-map", "[v]", "-map", "[aout]", *enc,
-            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-            # WAJIB: batasi durasi OUTPUT. apad menjadikan [a0] tak terbatas
-            # dan amix duration=longest meneruskannya -> tanpa -t di output,
-            # ffmpeg mengencode silence+BGM SELAMANYA (render tak pernah
-            # selesai, file membengkak tanpa batas).
-            "-t", f"{clip_dur:.3f}",
-            "-progress", "pipe:1", str(out_path),
-        ]
+            chains.append(f"[0:a]{a_pad}[aout]")
+        cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
+               "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}"]
+        if bgm:
+            cmd += ["-stream_loop", "-1", "-i", str(bgm["path"])]
+        for png, _, _, _ in overlays:
+            cmd += ["-loop", "1", "-i", png]
+        cmd += ["-filter_complex", ";".join(chains),
+                "-map", f"[{last}]", "-map", "[aout]", *enc,
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                # WAJIB: batasi durasi OUTPUT (input loop/pad tak terbatas)
+                "-t", f"{clip_dur:.3f}",
+                "-progress", "pipe:1", str(out_path)]
     else:
         cmd = [
             "ffmpeg", "-y", "-hide_banner", "-nostats", "-loglevel", "error",
             "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}",
             "-vf", vf, *enc,
-            "-af", "apad",  # audio selalu sepanjang video — ekor klip tak pernah sunyi
+            "-af", a_pad,  # voice treatment + audio selalu sepanjang video
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
             "-progress", "pipe:1", str(out_path),
         ]
@@ -345,3 +377,53 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg gagal: {err[-800:]}")
     return tw, th, enc_name
+
+
+def mix_bgm_pass(in_path, bgm, loop=False, clip_dur=None):
+    """Pass BGM SETELAH concat dead-air: video stream-copy (nyaris nol biaya
+    CPU), audio dicampur dengan fade UTUH satu kali — jahitan loop tetap rapat."""
+    in_path = os.path.abspath(in_path)
+    if not clip_dur or clip_dur <= 0:
+        clip_dur = probe_duration(in_path)
+    vol = float(bgm.get("volume", 0.15))
+    if loop:
+        fin = min(0.35, clip_dur / 8)
+        fout_d = min(0.35, clip_dur / 8)
+    else:
+        fin = min(0.8, clip_dur / 4)
+        fout_d = min(1.2, clip_dur / 4)
+    a = (f"[0:a]apad[a0];"
+         f"[1:a]atrim=0:{clip_dur:.3f},asetpts=PTS-STARTPTS,"
+         f"volume={vol:.3f},"
+         f"afade=t=in:st=0:d={fin:.3f},"
+         f"afade=t=out:st={max(0.0, clip_dur - fout_d):.3f}:d={fout_d:.3f}[bgm];"
+         f"[a0][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]")
+    tmp = str(in_path) + ".tmp.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+         "-i", in_path, "-stream_loop", "-1", "-i", str(bgm["path"]),
+         "-filter_complex", a, "-map", "0:v", "-map", "[aout]",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+         "-t", f"{clip_dur:.3f}", tmp],
+        check=True, cwd=os.path.dirname(in_path) or ".")
+    os.replace(tmp, in_path)
+
+
+def concat_clips(paths, out_path):
+    """Concat demuxer -c copy: semua sub dirender render_clip dengan parameter
+    identik (codec/timebase sama) — murah, tanpa encode ulang."""
+    out_path = os.path.abspath(out_path)
+    lst = out_path + ".txt"
+    with open(lst, "w") as fh:
+        for p in paths:
+            fh.write("file '" + os.path.abspath(str(p)) + "'\n")
+    try:
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                        "-f", "concat", "-safe", "0", "-i", lst,
+                        "-c", "copy", "-movflags", "+faststart", out_path],
+                       check=True)
+    finally:
+        try:
+            os.remove(lst)
+        except OSError:
+            pass

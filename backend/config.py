@@ -222,6 +222,20 @@ WARM_HUE_DEG = float(env("WARM_HUE_DEG", "2.0"))
 # BGM wajib selalu ada; intensitas kecil & nyaman. Kredit otomatis -> meta.json.
 BGM = env("BGM", "1").lower() in ("1", "true", "on")
 BGM_VOLUME = float(env("BGM_VOLUME", "0.15"))  # 15% dari suara utama
+
+# ============ DAGING KLIP v1: voice, dead-air, hook, watermark ============
+# VOICE TREATMENT: highpass + denoise + kompresi + loudness -14 LUFS
+# (standar platform) — klip terdengar 'studio'. 0 = perilaku lama.
+VOICE_TREAT = env("VOICE_TREAT", "1") == "1"
+# DEAD-AIR: jeda napas panjang di tengah klip dipotong (jump cut) memakai
+# timestamp kata Whisper. Hanya gap interior >= DEADAIR_GAP dtk, tiap sisi
+# wajib >= 1.2 dtk, total buangan <= 40%. 0 = rollback instan.
+DEADAIR = env("DEADAIR", "1") == "1"
+DEADAIR_GAP = float(env("DEADAIR_GAP", "0.6"))
+# WATERMARK 'SNOOPY CLIPPER' (kuning+putih tebal, semi-transparan, kiri-atas).
+WATERMARK = env("WATERMARK", "1") == "1"
+# HOOK OVERLAY: teks hook besar di 2-3 detik pertama klip.
+HOOK_OVERLAY = env("HOOK_OVERLAY", "1") == "1"
 BGM_DIR = BASE_DIR / "bgm"
 
 # ============ URL CHANNEL/PROFILE (auto-deteksi, semua platform yt-dlp) ============
