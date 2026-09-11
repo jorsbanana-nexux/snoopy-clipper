@@ -295,6 +295,23 @@ def _generate_with_fallback(client, types, parts):
     )
 
 
+# Daftar tag emoji topik thumbnail — SATU-SATUNYA yang valid (peta emoji
+# di thumbnail.py hanya mengenal ini). Tag di luar daftar = TANPA emoji.
+_TOPIC_TAGS = ("finance", "ekonomi", "crypto", "investasi", "love", "fitness",
+               "food", "tech", "gaming", "music", "travel", "edukasi",
+               "science", "health", "sports", "drama", "motivation", "crime",
+               "family", "cars", "nature", "business", "career", "history",
+               "berita", "politik", "spiritual", "comedy", "psychology",
+               "movie", "book", "ai", "law", "warning", "celebrity")
+
+
+def _topic_tag(v) -> str:
+    """Normalisasi tag emoji topik: hanya tag TERKENAL yang lolos — tag
+    ngaco = "" (thumbnail menolak tag tak dikenal, sampah jangan lewat)."""
+    t = str(v or "").strip().lower()[:24]
+    return t if t in _TOPIC_TAGS else ""
+
+
 def find_moments(transcript: dict, duration: float,
                  frames_dir=None, frame_interval=None, meta=None) -> list:
     """
@@ -492,7 +509,7 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             "audience": str(m.get("audience", ""))[:120],
             "bgm_mood": str(m.get("bgm_mood", ""))[:20],
             "content_type": str(m.get("content_type", "")).lower()[:16],
-            "topic_tag": str(m.get("topic_tag", "")).lower()[:24],
+            "topic_tag": _topic_tag(m.get("topic_tag", "")),
             "loop": is_loop,
             "loop_note": str(m.get("loop_note", ""))[:200],
             "layout": ("duo" if str(m.get("layout", "single")).lower() == "duo"
@@ -648,8 +665,13 @@ dalam detik absolut video. Untuk TIAP kandidat:
    "single".
 2. "layout_events": kalau terbelah hanya sebagian rentang:
    [{{"t": <detik RELATIF dari start klip>, "layout": "single"|"duo"}}]; utuh = [].
-3. "topic_tag": satu topik berbahasa transkrip (finansial, gaming, cinta,
-   bisnis, dst) — dipakai memilih emoji thumbnail.
+3. "topic_tag": tag emoji topik thumbnail — HANYA dari: finance | ekonomi |
+   crypto | investasi | love | fitness | food | tech | gaming | music |
+   travel | edukasi | science | health | sports | drama | motivation |
+   crime | family | cars | nature | business | career | history | berita |
+   politik | spiritual | comedy | psychology | movie | book | ai | law |
+   warning | celebrity. Kalau TIDAK ADA yang benar-benar nyambung dengan
+   isi momen ini, isi "" — JANGAN paksa asal (tag ngaco = emoji thumbnail ngaco).
 4. "bgm_mood": satu dari: comedy, upbeat, epic, tension, mystery, emotional,
    chill, action.
 Balas HANYA JSON: {{"directions": [{{"i": 0, "layout": "single", "layout_events": [], "topic_tag": "...", "bgm_mood": "chill"}}]}}
@@ -733,7 +755,10 @@ def _specialist_pass(moments: list, transcript: dict, duration: float,
             moments[i]["layout"] = str(d.get("layout", "single")).lower()[:8]
             moments[i]["layout_events"] = d.get("layout_events") or []
             if d.get("topic_tag"):
-                moments[i]["topic_tag"] = str(d["topic_tag"]).lower()[:24]
+                # hanya tag TERKENAL boleh menimpa — direktur pernah menimpa
+                # 'love' dgn kata bebas 'cinta' -> emoji topik hilang total
+                moments[i]["topic_tag"] = (_topic_tag(d["topic_tag"])
+                                          or moments[i].get("topic_tag", ""))
             if d.get("bgm_mood"):
                 moments[i]["bgm_mood"] = str(d["bgm_mood"]).lower()[:20]
     return [m for i, m in enumerate(moments) if i not in dropped]

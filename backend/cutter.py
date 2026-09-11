@@ -300,17 +300,19 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
     # ---- overlay PNG: watermark (kiri-atas, sepanjang klip) + hook (awal) ----
     overlays = []
     if wm_rel_path:
-        overlays.append((wm_rel_path, "main_w*0.035", "main_h*0.025", None))
+        overlays.append((wm_rel_path, "main_w*0.035", "main_h*0.025", None, True))
     if hook_rel_path:
         hd = max(0.4, min(hook_dur, clip_dur * 0.9))
+        # APNG animasi (fade+blur): main SEKALI saja — jangan -loop 1,
+        # frame terakhir transparan jadi eof pun tak meninggalkan apa pun.
         overlays.append((hook_rel_path, "(main_w-overlay_w)/2", "main_h*0.085",
-                         f"between(t,0.15,{hd:.2f})"))
+                         f"between(t,0.15,{hd:.2f})", False))
 
     if bgm or overlays:
         base = 2 if bgm else 1
         chains = [f"[0:v]{vf}[v0]"]
         last = "v0"
-        for k, (png, ox, oy, enable) in enumerate(overlays):
+        for k, (png, ox, oy, enable, oloop) in enumerate(overlays):
             nxt = f"vo{k}"
             e = f":enable='{enable}'" if enable else ""
             chains.append(f"[{last}][{base + k}:v]overlay=x='{ox}':y='{oy}'{e}[{nxt}]")
@@ -341,8 +343,9 @@ def render_clip(video_path, start, end, ass_rel_path, keyframes, src_w, src_h,
                "-ss", f"{start:.3f}", "-i", str(video_path), "-t", f"{clip_dur:.3f}"]
         if bgm:
             cmd += ["-stream_loop", "-1", "-i", str(bgm["path"])]
-        for png, _, _, _ in overlays:
-            cmd += ["-loop", "1", "-i", png]
+        for png, _, _, _, oloop in overlays:
+            # PNG statis (watermark) -> -loop 1; APNG animasi (hook) -> sekali
+            cmd += (["-loop", "1"] if oloop else []) + ["-i", png]
         cmd += ["-filter_complex", ";".join(chains),
                 "-map", f"[{last}]", "-map", "[aout]", *enc,
                 "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",

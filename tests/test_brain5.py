@@ -81,7 +81,7 @@ def test_find_moments_lima_otak_paralel_dan_merge(monkeypatch):
         if role == "direktur":
             return {"directions": [
                 {"i": 0, "layout": "duo", "layout_events": [],
-                 "topic_tag": "finansial", "bgm_mood": "chill"}]}
+                 "topic_tag": "finance", "bgm_mood": "chill"}]}
         raise RuntimeError("tak boleh ada peran lain")
 
     monkeypatch.setattr(brain, "_ask_role", fake_ask)
@@ -94,7 +94,7 @@ def test_find_moments_lima_otak_paralel_dan_merge(monkeypatch):
     assert m["title"] == "Judul Poles Memikat"          # penulis menimpa
     assert m["hook"] == "hook penulis"
     assert m["score"] == 9 and m["layout"] == "duo"     # verifikator + direktur
-    assert m["topic_tag"] == "finansial" and m["bgm_mood"] == "chill"
+    assert m["topic_tag"] == "finance" and m["bgm_mood"] == "chill"
 
 
 def test_spesialis_mati_semua_kurasi_tetap_utuh(monkeypatch):
