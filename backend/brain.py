@@ -70,6 +70,8 @@ ATURAN KETAT momen:
 
 12. SPLIT LAYER (layout): set "layout": "duo" HANYA kalau frame pada rentang klip BENAR-BENAR terbelah dua zona ATAS-BAWAH — contoh: wajah/pembicara di atas + gameplay/demo/presentasi di bawah, podcast dengan layar terbelah, atau pembicara yang sedang menunjukkan sesuatu di zona berseberangan — yaitu kondisi di mana subtitle satu tempat akan menutupi salah satu zona. Gunakan "single" (default) untuk SEMUA tampilan normal. Kalau kondisi terbelah hanya terjadi SEBAGIAN klip, set layout keseluruhan klip lalu tambah "layout_events": [{{"t": detik-relatif-dari-start-klip, "layout": "single"|"duo"}}] tepat di titik perubahannya (t dalam detik RELATIF dari start klip, bukan timestamp video). JANGAN pakai duo kalau ragu — salah posisi lebih merusak daripada posisi normal.
 
+13. STANDAR AKHIR — UJI DIRI SEBELUM KAWAL: untuk TIAP kandidat tanyakan: "kalau penonton acak melihat detik 1-3 klip ini di beranda, apakah dia BERHENTI scroll?" Ragu-ragu = turunkan skor atau buang kandidat itu. Tiap klip wajib punya ARC MINI utuh yang berdiri sendiri: hook menarik -> isi yang MENAIKKAN tensi/emosi/nilai -> pay-off memuaskan tepat di akhir. Klip "berdaging tapi datar" (informasi ada tapi tak ada tensi/kejutan/emosi) = skor MAKSIMAL 6 dan JANGAN pernah masuk pilihan teratas. SEDIKIT tapi setiap klip menarik >> banyak tapi datar — pemilihan = KURASI, bukan pengambilan sebanyak-banyaknya.
+
 Balas HANYA JSON (tanpa teks lain):
 {{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": []}}]}}"""
 
@@ -359,6 +361,8 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
         except (KeyError, TypeError, ValueError):
             continue
         is_loop = bool(m.get("loop", False))
+        if float(m.get("score") or 0) < config.MIN_CLIP_SCORE:
+            continue  # kurasi: "berdaging tapi datar" tak pernah jadi klip
         # klip loop: snap toleransi ketat (0.8s) — timestamp kata-presisi dari
         # otak DIPERCAYA; snap hanya merapikan noise, bukan menggeser potongan
         tol = 0.8 if is_loop else 2.0

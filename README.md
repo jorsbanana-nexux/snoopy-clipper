@@ -139,6 +139,22 @@ Lihat `.env.example` untuk daftar lengkap + komentar per baris.
 **MIT** — bebas dipakai, dimodifikasi, dan dikomersialkan (jual SaaS pun bisa tanpa membuka kode modifikasimu).
 Teks lengkap: [LICENSE](LICENSE). BGM bawaan berlisensi **CC BY 4.0** — kreditnya sudah otomatis tercantum di tiap klip.
 
+## 💳 Plan Multi-User
+
+| | 🆓 Free | ⭐ Pro |
+|---|---|---|
+| Kuota render | 30 menit/hari | **240 menit/hari** |
+| Daging klip (voice -14 LUFS, karaoke v3.1, split layer, dead-air, hook, SFX) | ✅ | ✅ |
+| Loop alami + BGM mood-aware + thumbnail | ✅ | ✅ |
+| Auto-post YouTube Shorts | ✅ | ✅ |
+| Watermark Snoopy | ✅ | ✅ |
+| Dukungan | komunitas | **prioritas** |
+| Harga | **Rp0** | **Rp150.000/bulan** |
+
+Aktifkan: `MULTIUSER=1` + `ADMIN_EMAIL` di `.env`. Pembayaran: Midtrans (QRIS/GoPay/OVA/DANA/VA/kartu) — atau mode manual transfer bank tanpa gateway.
+
+---
+
 ---
 
 <div align="center">

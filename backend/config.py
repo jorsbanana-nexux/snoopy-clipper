@@ -236,6 +236,12 @@ DEADAIR_GAP = float(env("DEADAIR_GAP", "0.6"))
 WATERMARK = env("WATERMARK", "1") == "1"
 # HOOK OVERLAY: teks hook besar di 2-3 detik pertama klip.
 HOOK_OVERLAY = env("HOOK_OVERLAY", "1") == "1"
+# SFX: whoosh sintesis (awal klip & jahitan jump-cut) + pop saat hook muncul.
+SFX = env("SFX", "1") == "1"
+SFX_VOLUME = float(env("SFX_VOLUME", "0.3"))
+# KURASI OTAK: momen di bawah skor ini TIDAK PERNAH jadi klip —
+# "berdaging tapi datar" ditolak, daripada banyak tapi membosankan.
+MIN_CLIP_SCORE = float(env("MIN_CLIP_SCORE", "6.0"))
 BGM_DIR = BASE_DIR / "bgm"
 
 # ============ URL CHANNEL/PROFILE (auto-deteksi, semua platform yt-dlp) ============
