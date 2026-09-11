@@ -121,7 +121,7 @@ GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.1-pro-preview")  # tertinggi duluan
 # kali, lalu turun ke daftar model cadangan (GEMINI_FALLBACK_MODELS) satu per satu
 # (dalam urutan yang ditulis) sampai ada yang berhasil. Diam-diam log ke console
 # tiap kali pindah model, supaya kelihatan di log kapan fallback terjadi.
-GEMINI_PRIMARY_RETRIES = int(env("GEMINI_PRIMARY_RETRIES", "2"))  # percobaan model utama sebelum turun
+GEMINI_PRIMARY_RETRIES = int(env("GEMINI_PRIMARY_RETRIES", "3"))  # percobaan model utama sebelum turun (perisai badai 503)
 # CATATAN: gemini-2.5-pro DIBUANG dari daftar — Google sudah mematikannya
 # (404 permanen "no longer available for new users"), jadi kalau tetap ada
 # di sini, SETIAP job membuang satu percobaan penuh ke model yang pasti mati.

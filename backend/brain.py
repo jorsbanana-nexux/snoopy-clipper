@@ -281,7 +281,12 @@ def _generate_with_fallback(client, types, parts):
                 if permanent:
                     break  # jangan ulangi model yang sama -> lompat ke model berikutnya
                 if attempt < max_tries:
-                    time.sleep(config.GEMINI_RETRY_DELAY_SEC)  # error sementara -> beri waktu pulih
+                    # PERISAI BADAI 503: backoff eksponensial — badai 'high
+                    # demand' Google butuh waktu PULIH; jeda pendek tetap =
+                    # model tertinggi jatuh ke model bawah sia-sia. Jeda tumbuh
+                    # 2s -> 4s -> 8s -> ... (dibatasi 30s) lalu baru turun.
+                    time.sleep(min(config.GEMINI_RETRY_DELAY_SEC * (2 ** (attempt - 1)),
+                                   30.0))
                 elif not is_last_model:
                     time.sleep(config.GEMINI_RETRY_DELAY_SEC)
                 continue
