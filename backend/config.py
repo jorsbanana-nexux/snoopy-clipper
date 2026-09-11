@@ -67,17 +67,22 @@ API_KEY = env("API_KEY")
 DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 
 # ============ COOKIES (jaga-jaga blokir YouTube "confirm you're not a bot") ============
-# Cara 1 (termudah, TAPI rawan di Windows): isi nama browser yang dipakai login
-#   YouTube -> cookie dibaca langsung dari profilnya.
+# Cara 1 (isi nama browser -> cookie dibaca langsung dari profilnya):
 #   COOKIES_FROM_BROWSER=chrome   (pilihan: chrome / edge / firefox / brave / opera)
-#   Windows mengunci file Cookies-nya SELAMA browser itu terbuka -> yt-dlp gagal
-#   baca ("Could not copy Chrome cookie database", yt-dlp issue #7271). Server
-#   otomatis fallback jalan TANPA cookie sama sekali saat ini terjadi (video
-#   publik biasanya tetap berhasil) -- tapi kalau video butuh login/umur 18+,
-#   TUTUP browser dulu sebelum GetClips, atau pakai Cara 2 di bawah (lebih stabil).
-# Cara 2 (lebih stabil, tak perlu tutup browser): ekspor cookies.txt (ekstensi
-#   "Get cookies.txt LOCALLY" saat buka youtube.com), taruh file bernama
-#   cookies.txt di root project -> terdeteksi otomatis.
+#   RAWAN GAGAL di Windows -- BUKAN cuma saat browser terbuka: Chrome versi
+#   baru (App-Bound Encryption, ~2024+) mengenkripsi Cookies.sqlite dengan
+#   kunci terikat OS sehingga yt-dlp sering tetap gagal MENYALIN file itu
+#   ("Could not copy Chrome cookie database", yt-dlp issue #7271) walau
+#   Chrome sudah ditutup. Kalau ini terjadi, server otomatis jatuh ke Cara 2
+#   (cookies.txt, kalau file itu ada) sebelum akhirnya coba tanpa cookie sama
+#   sekali -- video publik tetap berhasil; video yang butuh login/umur 18+
+#   TETAP bisa lolos asal Cara 2 terisi.
+# Cara 2 (LEBIH STABIL, disarankan kalau Cara 1 sering gagal seperti di atas):
+#   ekspor cookies.txt (ekstensi "Get cookies.txt LOCALLY" saat login di
+#   youtube.com), taruh file bernama cookies.txt di root project -> terdeteksi
+#   otomatis. Boleh isi KEDUANYA sekaligus (fallback otomatis Cara 1 -> Cara 2
+#   -> tanpa cookie) atau cukup Cara 2 saja (lebih cepat, tak buang waktu coba
+#   Cara 1 yang sudah diketahui gagal tiap kali).
 COOKIES_FROM_BROWSER = env("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE = env("COOKIES_FILE", "")
 
