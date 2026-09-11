@@ -242,6 +242,13 @@ SFX_VOLUME = float(env("SFX_VOLUME", "0.3"))
 # KURASI OTAK: momen di bawah skor ini TIDAK PERNAH jadi klip —
 # "berdaging tapi datar" ditolak, daripada banyak tapi membosankan.
 MIN_CLIP_SCORE = float(env("MIN_CLIP_SCORE", "6.0"))
+# ============ 5 OTAK SPESIALIS: ruang kerja terpisah per-tugas ============
+# Tempel hingga 5 kunci Gemini (dipisah koma): kurator/verifikator/penulis/
+# direktur masing-masing dipegang otak BERBEDA yang jalan PARALEL — atensi
+# tak terbagi-bagi, kuota tak rebutan, verifikasi 2-tahap aktif.
+# Kosong = mode 1-otak lama (pakai GEMINI_API_KEY) — perilaku IDENTIK 100%.
+BRAIN_KEYS = [k.strip() for k in env("BRAIN_KEYS", "").split(",") if k.strip()]
+BRAIN_MODE = env("BRAIN_MODE", "auto")  # auto (multi bila >=2 kunci) | off | multi
 BGM_DIR = BASE_DIR / "bgm"
 
 # ============ URL CHANNEL/PROFILE (auto-deteksi, semua platform yt-dlp) ============

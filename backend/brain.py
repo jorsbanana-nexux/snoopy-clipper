@@ -293,17 +293,18 @@ def _generate_with_fallback(client, types, parts):
 def find_moments(transcript: dict, duration: float,
                  frames_dir=None, frame_interval=None, meta=None) -> list:
     """
-    Kirim transkrip + KONTEKS (judul/channel/mode-anak) + frame (kalau ada)
-    ke Gemini -> daftar momen tervalidasi. Tetap SATU panggilan LLM —
-    proses 3-langkah terjadi di dalam prompt, nol langkah tambahan.
+    Kirim transkrip + KONTEKS + frame ke Gemini -> daftar momen tervalidasi.
+    MODE 1 OTAK (default): SATU panggilan — perilaku identik versi lama.
+    MODE 5 OTAK (BRAIN_KEYS >= 2 kunci): KURATOR memilih momen, lalu
+    VERIFIKATOR + PENULIS + DIREKTUR jalan PARALEL di kunci sendiri —
+    tiap otak fokus SATU tugas (atensi tak terbagi), kegagalan satu otak
+    hanya membatalkan polesan tugas itu (kurasi dasar tetap utuh).
     meta: {"title","uploader","is_kids"} dari pipeline (downloader.get_info).
     Model utama dicoba GEMINI_PRIMARY_RETRIES kali; kalau tetap gagal, turun ke
     daftar model cadangan (GEMINI_FALLBACK_MODELS) satu per satu.
     """
-    if not config.GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY belum diisi di file .env")
-    from google import genai
-    from google.genai import types
+    if not (config.GEMINI_API_KEY or config.BRAIN_KEYS):
+        raise RuntimeError("GEMINI_API_KEY / BRAIN_KEYS belum diisi di file .env")
 
     frames = []
     if frames_dir and frame_interval:
@@ -311,18 +312,12 @@ def find_moments(transcript: dict, duration: float,
         frames = sorted(Path(frames_dir).glob("f_*.jpg"))[: config.BRAIN_MAX_FRAMES]
 
     prompt = _build_prompt(transcript, duration, frames, frame_interval, meta)
-
-    parts = [types.Part.from_text(text=prompt)]
-    for f in frames:
-        parts.append(types.Part.from_bytes(
-            data=f.read_bytes(), mime_type="image/jpeg"
-        ))
-
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
-    resp = _generate_with_fallback(client, types, parts)
-    raw = json.loads(resp.text)
-    return _validate(_extract_moments(raw), transcript["words"], duration,
-                      lines=transcript.get("lines"))
+    moments = _extract_moments(_ask_role("kurator", prompt, frames))
+    if moments and _multi_mode():
+        moments = _specialist_pass(moments, transcript, duration, frames,
+                                   frame_interval)
+    return _validate(moments, transcript["words"], duration,
+                     lines=transcript.get("lines"))
 
 
 def _extract_moments(raw) -> list:
@@ -412,3 +407,221 @@ def _layout_events(raw, dur: float) -> list:
             out.append({"t": round(t, 2), "layout": l})
     out.sort(key=lambda x: x["t"])
     return out[:6]
+
+
+# ================= 5 OTAK SPESIALIS: ruang kerja terpisah =================
+ROLES = ("kurator", "verifikator", "penulis", "direktur", "analis")
+_key_health = {}   # sesi: kunci kuota-habis -> digantikan tetangga SEGERA
+
+
+def _brain_keys() -> list:
+    """Kolam kunci: BRAIN_KEYS (khusus otak) atau [GEMINI_API_KEY] (legacy)."""
+    if config.BRAIN_KEYS:
+        return list(config.BRAIN_KEYS)
+    return [config.GEMINI_API_KEY] if config.GEMINI_API_KEY else []
+
+
+def _role_key(role: str, offset: int = 0) -> str:
+    """Kunci milik otak ini (round-robin per tugas); kunci sakit digantikan
+    tetangga terdekat (offset). Semua sakit = coba kunci asal (health basi)."""
+    keys = _brain_keys()
+    if not keys:
+        raise RuntimeError("GEMINI_API_KEY / BRAIN_KEYS belum diisi di .env")
+    base = ROLES.index(role)
+    idx = (base + offset) % len(keys)
+    if offset == 0:
+        # kunci milik tugas ini SAKIT (kuota habis) -> tetangga terdekat
+        # yang sehat ambil alih SEGERA; semua sakit = kunci asal (health basi)
+        for off in range(len(keys)):
+            k = keys[(base + off) % len(keys)]
+            if not _key_health.get(k):
+                return k
+    return keys[idx]
+
+
+def _multi_mode() -> bool:
+    """auto: aktif bila >= 2 kunci; off: paksa 1-otak; multi: paksa aktif."""
+    if config.BRAIN_MODE == "off":
+        return False
+    if config.BRAIN_MODE == "multi":
+        return len(_brain_keys()) >= 1
+    return len(_brain_keys()) >= 2
+
+
+def _ask_role(role: str, prompt: str, frames=None):
+    """Satu panggilan OTAK SPESIALIS: kunci sendiri (round-robin), fallback
+    model tetap berlaku (model tertinggi -> turun level, mekanisme lama),
+    kunci kuota-habis ditandai lalu digantikan tetangga SEGERA."""
+    from google import genai
+    from google.genai import types
+    keys = _brain_keys()
+    if not keys:
+        raise RuntimeError("GEMINI_API_KEY / BRAIN_KEYS belum diisi di .env")
+    parts = [types.Part.from_text(text=prompt)]
+    for f in (frames or []):
+        parts.append(types.Part.from_bytes(
+            data=f.read_bytes(), mime_type="image/jpeg"))
+    errors = []
+    for off in range(len(keys)):
+        key = _role_key(role, off)
+        try:
+            client = genai.Client(api_key=key)
+            resp = _generate_with_fallback(client, types, parts)
+            return json.loads(resp.text)
+        except Exception as e:
+            errors.append(f"{role}/kunci#{off + 1}: {e}")
+            if _is_quota_error(e):
+                _key_health[key] = True   # kuota habis -> otak lain ambil alih
+    raise RuntimeError("; ".join(errors)[:600])
+
+
+def _transcript_text(transcript: dict, max_chars=24000) -> str:
+    """Transkrip ringkas BERTIMESTAMP utk otak teks (verifikator/penulis)."""
+    lines = transcript.get("lines") or []
+    if lines:
+        segs = [f"[{l['start']:.1f}-{l['end']:.1f}] {l.get('text', '')}"
+                for l in lines]
+    else:
+        segs = [f"[{w['start']:.1f}-{w['end']:.1f}] {w.get('text', '')}"
+                for w in transcript.get("words", [])]
+    return "\n".join(segs)[:max_chars]
+
+
+_V_PROMPT = """Kamu EDITOR EKSEKUTIF VERIFIKATOR — satu-satunya tugas: menilai ulang
+kandidat klip dengan standar TERTINGGI. Untuk TIAP kandidat, BACA teks
+rentangnya dengan teliti di transkrip, lalu tanya:
+1. "Kalau penonton acak melihat detik 1-3 klip ini di beranda, apakah dia
+   BERHENTI scroll?"
+2. Arc mini utuh: hook menarik -> isi menaikkan tensi/emosi/nilai -> pay-off
+   memuaskan TEPAT di akhir?
+3. Klip "berdaging tapi datar" (informasi ada tapi tak ada tensi/kejutan/
+   emosi) = keep false — TOLAK tanpa ragu.
+4. start/end harus TEPAT di batas kata/kalimat transkrip — kalau kurang tepat
+   berikan start_fix/end_fix (detik, HARUS ada di transkrip); kalau sudah
+   tepat isi 0.
+5. hook_improved: versi hook yang lebih tajam dalam 1 kalimat pendek; kalau
+   sudah bagus, salin apa adanya.
+Bahasa keluaran WAJIB sama dengan bahasa transkrip. Balas HANYA JSON:
+{{"verdicts": [{{"i": 0, "keep": true, "score": 8, "start_fix": 0, "end_fix": 0, "hook_improved": "..."}}]}}
+
+TRANSKRIP (detik absolut):
+{tr}
+
+KANDIDAT:
+{cand}"""
+
+
+_W_PROMPT = """Kamu PENULIS JUDUL & HOOK profesional short-form. Untuk TIAP kandidat:
+1. "title": tulis ulang maks 60 karakter — memancing wajib-tonton TANPA
+   membocorkan pay-off, TANPA ALL-CAPS berlebihan, TANPA clickbait bohong.
+   (judul ini juga jadi teks thumbnail)
+2. "hook": satu kalimat pembuka memukul (maks 12 kata) — dipasang sebagai
+   overlay teks besar di 2-3 detik pertama klip.
+Jangan ubah fakta/makna. Bahasa keluaran WAJIB sama dengan bahasa transkrip.
+Balas HANYA JSON: {{"rewrites": [{{"i": 0, "title": "...", "hook": "..."}}]}}
+
+TRANSKRIP:
+{tr}
+
+KANDIDAT:
+{cand}"""
+
+
+_D_PROMPT = """Kamu DIREKTUR VISUAL. Frame dikirim SETIAP ±{iv:.1f} detik dari awal
+video (frame i ≈ detik i×interval) dalam urutan waktu; rentang kandidat
+dalam detik absolut video. Untuk TIAP kandidat:
+1. "layout": "duo" HANYA kalau frame pada rentangnya benar-benar terbelah
+   dua zona ATAS-BAWAH (wajah/pembicara di atas + gameplay/demo/presentasi
+   di bawah) sehingga subtitle satu tempat menutupi salah satu zona; ragu =
+   "single".
+2. "layout_events": kalau terbelah hanya sebagian rentang:
+   [{{"t": <detik RELATIF dari start klip>, "layout": "single"|"duo"}}]; utuh = [].
+3. "topic_tag": satu topik berbahasa transkrip (finansial, gaming, cinta,
+   bisnis, dst) — dipakai memilih emoji thumbnail.
+4. "bgm_mood": satu dari: comedy, upbeat, epic, tension, mystery, emotional,
+   chill, action.
+Balas HANYA JSON: {{"directions": [{{"i": 0, "layout": "single", "layout_events": [], "topic_tag": "...", "bgm_mood": "chill"}}]}}
+
+KANDIDAT:
+{cand}"""
+
+
+def _safe_result(fut):
+    """Hasil masa depan -> dict; kegagalan otak apa pun -> {} (degradasi)."""
+    try:
+        r = fut.result()
+        return r if isinstance(r, dict) else {}
+    except Exception:
+        return {}
+
+
+def _specialist_pass(moments: list, transcript: dict, duration: float,
+                     frames, frame_interval) -> list:
+    """TIGA OTAK SPESIALIS jalan PARALEL di kunci sendiri:
+    - VERIFIKATOR: nilai ulang tiap kandidat (drop yang datar, perbaiki
+      timestamp & hook) — gerbang mutu kedua setelah kurator
+    - PENULIS: poles judul & hook (menjadi teks thumbnail + overlay)
+    - DIREKTUR: layout duo/split-layer + topic_tag + mood BGM (frame)
+    Semua kegagalan otak hanya membatalkan polesan TUGAS ITU — kurasi
+    kurator tetap utuh, pipeline TIDAK PERNAH gagal karena spesialis."""
+    from concurrent.futures import ThreadPoolExecutor
+    tr_text = _transcript_text(transcript)
+    cand = json.dumps([{"i": i, "start": m.get("start"), "end": m.get("end"),
+                        "title": m.get("title", ""), "hook": m.get("hook", ""),
+                        "score": m.get("score")}
+                       for i, m in enumerate(moments)], ensure_ascii=False)
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        fv = ex.submit(_ask_role, "verifikator",
+                       _V_PROMPT.format(tr=tr_text, cand=cand))
+        fw = ex.submit(_ask_role, "penulis",
+                       _W_PROMPT.format(tr=tr_text, cand=cand))
+        fd = ex.submit(_ask_role, "direktur",
+                       _D_PROMPT.format(iv=frame_interval or 0.0, cand=cand),
+                       frames)
+        verdicts = _safe_result(fv).get("verdicts") or []
+        rewrites = _safe_result(fw).get("rewrites") or []
+        directions = _safe_result(fd).get("directions") or []
+
+    def _idx(v):
+        try:
+            i = int(v.get("i"))
+            return i if 0 <= i < len(moments) else None
+        except (TypeError, ValueError):
+            return None
+
+    dropped = set()
+    for v in verdicts:
+        i = _idx(v)
+        if i is None:
+            continue
+        if v.get("keep") is False:
+            dropped.add(i)
+        else:
+            if v.get("score") is not None:
+                moments[i]["score"] = v.get("score")
+            if v.get("hook_improved"):
+                moments[i]["hook"] = str(v["hook_improved"])[:120]
+            for fx, fld in (("start_fix", "start"), ("end_fix", "end")):
+                try:
+                    t = float(v.get(fx) or 0)
+                    if 0 < t < duration:
+                        moments[i][fld] = t
+                except (TypeError, ValueError):
+                    pass
+    for r in rewrites:
+        i = _idx(r)
+        if i is not None:
+            if r.get("title"):
+                moments[i]["title"] = str(r["title"])[:80]
+            if r.get("hook"):
+                moments[i]["hook"] = str(r["hook"])[:120]
+    for d in directions:
+        i = _idx(d)
+        if i is not None:
+            moments[i]["layout"] = str(d.get("layout", "single")).lower()[:8]
+            moments[i]["layout_events"] = d.get("layout_events") or []
+            if d.get("topic_tag"):
+                moments[i]["topic_tag"] = str(d["topic_tag"]).lower()[:24]
+            if d.get("bgm_mood"):
+                moments[i]["bgm_mood"] = str(d["bgm_mood"]).lower()[:20]
+    return [m for i, m in enumerate(moments) if i not in dropped]

@@ -62,6 +62,7 @@ Semua platform yang didukung yt-dlp: YouTube, TikTok, Instagram, X, Facebook —
 | 🖼️ **Thumbnail wajib** | 4-lapis fallback (tak pernah gagal): wajah terbaik + ekspresi + ketajaman; teks khusus podcast + emoji topik. |
 | 🎨 **Grade ultra + motion blur** | eq/hue/unsharp hasil benchmark CPU; blur hanya saat kamera pan — subtitle tetap tajam. |
 | 📤 **Auto-post YouTube Shorts** | OAuth resmi Google, upload resumable, tombol Publish per klip di library. |
+| 🧠 **5 Otak Spesialis (ops.)** | Tempel ≤5 kunci di `BRAIN_KEYS`: kurator/verifikator/penulis/direktur jalan **paralel** di kunci sendiri — atensi tak terbagi + verifikasi 2-tahap. Kosong = 1 otak (perilaku identik). |
 | 👥 **Multi-user + billing** | Plan Free/Pro, kunci API per-user, kuota menit per plan. Midtrans (QRIS/GoPay/OVO/DANA/VA/kartu) **atau** mode manual transfer. |
 | 🔐 **Login Google & email** | PBKDF2, tautan akun otomatis, anti-CSRF. `MULTIUSER=0` default = mode lokal lama utuh. |
 | 🚦 **ETA realtime + pulih crash** | Kalibrasi drift dari kecepatan nyata; job basi pasca-restart jadi error jelas, bukan menggantung. |
