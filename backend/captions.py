@@ -23,13 +23,23 @@ _LANG_PRIORITY = ["id", "en", "ja", "ko", "es", "pt", "zh-Hans", "zh", "ar"]
 
 def _pick_caption(info) -> tuple:
     """Pilih track transkrip TERBAIK untuk kontrak bahasa klip.
-    Manual (unggahan pembuat) > auto. Track '-orig' = bahasa ASLI yang
-    DIUCAPKAN di video — WAJIB menang atas auto-terjemahan ('id' utk video
-    English = terjemahan mesin yang merusak kontrak bahasa). Terbukti hidup
-    2026-09-11: video English keluar klip full Indonesia karena 'id'
-    prioritas pertama. -> (lang, fmts) atau (None, None)."""
+    HIERARKI (terbukti lewat bug nyata 2026-09-11, video English klip keluar
+    full Indonesia dua kali):
+    1. Bahasa ASLI yang DIUCAPKAN (info['language'] dari yt-dlp) menang atas
+       SEGALANYA — manual maupun auto. Video English milik channel Indonesia
+       yang mengunggah sub manual 'id' tetap HARUS pakai track 'en': klip
+       ditenonton penonton yang sama bahasanya dengan yang diucapkan.
+    2. Manual (unggahan pembuat) via prioritas lama.
+    3. Auto: track '-orig' (bahasa asli) > prioritas.
+    -> (lang, fmts) atau (None, None)."""
     manual = info.get("subtitles") or {}
     auto = info.get("automatic_captions") or {}
+    spoken = (info.get("language") or "").strip().lower().split("-")[0] or None
+    if spoken:
+        for source in (manual, auto):
+            for cand in (spoken, f"{spoken}-orig"):
+                if source.get(cand):
+                    return cand, source[cand]
     for l in _LANG_PRIORITY + sorted(manual):
         if manual.get(l):
             return l, manual[l]
