@@ -223,3 +223,102 @@ $("#go").addEventListener("click", startJob);
 $("#url").addEventListener("keydown", (e) => {
   if (e.key === "Enter") startJob();
 });
+
+// ============================================================
+// MULTI-USER & BILLING (gap #6) — pasif total saat server mode
+// lokal (MULTIUSER=0): /api/health tanpa "multiuser" -> pulang.
+// ============================================================
+(async function () {
+  let h;
+  try { h = await (await fetch("/api/health")).json(); } catch (e) { return; }
+  if (!h || !h.multiuser) return;
+
+  function showAuth() {
+    let old = document.getElementById("auth-overlay");
+    if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.id = "auth-overlay";
+    ov.innerHTML = `
+      <div class="auth-card">
+        <div class="auth-logo">Snoopy Clipper</div>
+        <h2 id="auth-title">Masuk</h2>
+        <input id="auth-email" type="email" placeholder="Email" autocomplete="email">
+        <input id="auth-pass" type="password" placeholder="Password (min. 8 karakter)">
+        <button id="auth-submit">Masuk</button>
+        <p class="auth-alt">Belum punya akun? <a href="#" id="auth-toggle">Daftar</a></p>
+        <p class="auth-err" id="auth-err"></p>
+      </div>`;
+    document.body.appendChild(ov);
+    let mode = "login";
+    const $ = (sel) => ov.querySelector(sel);
+    $("#auth-toggle").onclick = (e) => {
+      e.preventDefault();
+      mode = (mode === "login") ? "register" : "login";
+      $("#auth-title").textContent = (mode === "login") ? "Masuk" : "Buat akun baru";
+      $("#auth-submit").textContent = (mode === "login") ? "Masuk" : "Daftar";
+      const link = $("#auth-toggle");
+      link.textContent = (mode === "login") ? "Daftar" : "Masuk";
+      link.parentElement.firstChild.textContent =
+        (mode === "login") ? "Belum punya akun? " : "Sudah punya akun? ";
+      $("#auth-err").textContent = "";
+    };
+    $("#auth-submit").onclick = async () => {
+      const email = $("#auth-email").value.trim();
+      const pass = $("#auth-pass").value;
+      $("#auth-err").textContent = "";
+      const r = await fetch("/api/auth/" + (mode === "login" ? "login" : "register"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, password: pass })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { $("#auth-err").textContent = j.detail || "Gagal — coba lagi."; return; }
+      localStorage.setItem("snoopy_key", j.api_key);
+      location.reload();
+    };
+  }
+
+  if (!apiKey()) { showAuth(); return; }
+
+  let me = null;
+  try {
+    const r = await fetch("/api/me", { headers: { "X-API-Key": apiKey() } });
+    if (r.status === 401) { localStorage.removeItem("snoopy_key"); showAuth(); return; }
+    me = await r.json();
+  } catch (e) { return; }
+
+  const chip = document.createElement("div");
+  chip.id = "account-chip";
+  chip.title = me.email + (me.admin ? " (admin)" : "");
+  chip.innerHTML = `
+    <span class="chip-plan ${me.plan}">${me.plan_label}</span>
+    <span class="chip-quota">${Math.max(0, me.quota.left_minutes)}m hari ini</span>
+    <button id="chip-upgrade">Upgrade</button>
+    <button id="chip-logout" title="Keluar">&#9099;</button>`;
+  document.body.appendChild(chip);
+
+  document.getElementById("chip-logout").onclick = () => {
+    localStorage.removeItem("snoopy_key");
+    location.reload();
+  };
+  document.getElementById("chip-upgrade").onclick = async () => {
+    const plans = await (await fetch("/api/billing/plans", {
+      headers: { "X-API-Key": apiKey() }
+    })).json();
+    const price = "Rp" + String(plans.pro_price_idr).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    const go = confirm(
+      "Upgrade ke PRO \u2014 " + price + " / 30 hari\n" +
+      "Batas " + plans.plans.pro.daily_minutes + " menit video/hari " +
+      "(Free cuma " + plans.plans.free.daily_minutes + ").\n\nLanjut ke pembayaran?");
+    if (!go) return;
+    const r = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey() },
+      body: JSON.stringify({ plan: "pro", days: 30 })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { alert(j.detail || "Checkout gagal."); return; }
+    if (j.payment_url) { window.open(j.payment_url, "_blank"); }
+    else { alert("Order dibuat: " + j.order_id + "\n\n" + (j.manual_instructions || "")); }
+  };
+})();

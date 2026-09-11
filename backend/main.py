@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, pipeline, library, quota, publisher
+from . import config, pipeline, library, quota, publisher, accounts, billing
 
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -23,6 +23,15 @@ def require_key(request: Request):
     Diisi = /api/clip, /api/jobs, /api/library wajib header X-API-Key (atau ?key=).
     Endpoint file (klip/thumbnail) tetap terbuka — id-nya acak & tak berisi data
     pribadi; begitu ada auth multi-user sungguhan, ganti ini."""
+    if config.MULTIUSER:
+        # gap #6: kunci API per-user (accounts.py). API_KEY global diabaikan.
+        supplied = (request.headers.get("X-API-Key")
+                    or request.query_params.get("key") or "")
+        user = accounts.get_by_key(supplied)
+        if not user:
+            raise HTTPException(401, "Kunci API tidak dikenal — login dulu.")
+        request.state.user = user
+        return user
     if not config.API_KEY:
         return
     supplied = request.headers.get("X-API-Key") or request.query_params.get("key") or ""
@@ -41,14 +50,20 @@ def health():
         "gemini": bool(config.GEMINI_API_KEY),
         "whisper": f"{config.WHISPER_MODEL}/{config.WHISPER_COMPUTE}",
         "auth": bool(config.API_KEY),  # frontend minta kunci bila true
+        "multiuser": bool(config.MULTIUSER),  # frontend tampil login/daftar bila true
     }
 
 
 @app.post("/api/clip")
-def create_clip(req: ClipRequest, _=Depends(require_key)):
+def create_clip(req: ClipRequest, user=Depends(require_key)):
     url = req.url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(400, "URL tidak valid — harus diawali http(s)://")
+    if config.MULTIUSER and user:
+        # kuota & penagihan melekat pada akun yang memesan, bukan global
+        return {"job_id": pipeline.create_job(
+            url, user_key=user["api_key"],
+            plan_minutes=accounts.plan_minutes(user))}
     return {"job_id": pipeline.create_job(url)}
 
 
@@ -66,9 +81,116 @@ def get_library(_=Depends(require_key)):
 
 
 @app.get("/api/quota")
-def get_quota(_=Depends(require_key)):
-    """Kuota hari ini — dasar 'sisa kredit' di UI & fondasi billing."""
+def get_quota(user=Depends(require_key)):
+    """Kuota hari ini — dasar 'sisa kredit' di UI & fondasi billing.
+    Mode multi-user: kuota milik akun pemanggil (bukan global)."""
+    if config.MULTIUSER and user:
+        return quota.user_usage(user["api_key"], accounts.plan_minutes(user))
     return quota.usage()
+
+
+# ===================== MULTI-USER & BILLING (gap #6) =====================
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+class CheckoutRequest(BaseModel):
+    plan: str = "pro"
+    days: int = 30
+
+
+class GrantRequest(BaseModel):
+    email: str
+    plan: str
+    days: int = 30
+
+
+def _multiuser_guard():
+    if not config.MULTIUSER:
+        raise HTTPException(403, "Server mode lokal (MULTIUSER=0) — tanpa akun.")
+
+
+@app.post("/api/auth/register")
+def auth_register(req: AuthRequest):
+    """Buat akun -> dapat kunci API pribadi + plan Free. Password disimpan
+    sebagai PBKDF2 (lihat accounts.py)."""
+    _multiuser_guard()
+    try:
+        user = accounts.register(req.email, req.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"email": user["email"], "api_key": user["api_key"], "plan": "free"}
+
+
+@app.post("/api/auth/login")
+def auth_login(req: AuthRequest):
+    _multiuser_guard()
+    user = accounts.login(req.email, req.password)
+    if not user:
+        raise HTTPException(401, "Email atau password salah.")
+    return {"email": user["email"], "api_key": user["api_key"],
+            "plan": accounts.effective_plan(user)}
+
+
+@app.get("/api/me")
+def me(user=Depends(require_key)):
+    _multiuser_guard()
+    return {**accounts.public(user),
+            "quota": quota.user_usage(user["api_key"], accounts.plan_minutes(user))}
+
+
+@app.get("/api/billing/plans")
+def billing_plans(user=Depends(require_key)):
+    return {
+        "plans": {k: {"label": v["label"], "daily_minutes": v["daily_minutes"]}
+                 for k, v in accounts.PLANS.items()},
+        "pro_price_idr": config.PLAN_PRO_PRICE_IDR,
+        "gateway": billing.gateway(),  # "midtrans" | "manual"
+    }
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(req: CheckoutRequest, user=Depends(require_key)):
+    """Midtrans terpasang -> URL pembayaran; jika tidak -> mode manual
+    (transfer bank, admin grant). Jualan bisa jalan tanpa gateway."""
+    _multiuser_guard()
+    try:
+        order = billing.create_order(user, req.plan, req.days)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    resp = {"order_id": order["order_id"], "amount_idr": order["amount_idr"],
+            "status": order["status"], "payment_url": order["payment_url"]}
+    if order["status"] == "awaiting_manual":
+        resp["manual_instructions"] = (
+            "Transfer Rp" + f"{order['amount_idr']:,}".replace(",", ".")
+            + " ke rekening admin, lalu kirim bukti + kode order "
+            + order["order_id"] + f" — admin akan mengaktifkan plan {req.plan} "
+            f"{req.days} hari setelah pembayaran diverifikasi.")
+    return resp
+
+
+@app.post("/api/billing/midtrans-webhook")
+def midtrans_webhook(payload: dict):
+    """Dipanggil server Midtrans (server-ke-server), tanpa kunci —
+    keamanan lewat signature SHA-512; tanpa signature valid -> 403."""
+    try:
+        billing.handle_notification(payload)
+    except ValueError:
+        raise HTTPException(403, "Notifikasi tidak valid.")
+    return {"ok": True}
+
+
+@app.post("/api/billing/grant")
+def billing_grant(req: GrantRequest, user=Depends(require_key)):
+    """Admin mengaktifkan plan manual (jualan transfer-bank / retensi)."""
+    if not (config.MULTIUSER and accounts.is_admin(user)):
+        raise HTTPException(403, "Hanya admin.")
+    try:
+        target = accounts.grant(req.email, req.plan, req.days)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return accounts.public(target)
 
 
 @app.get("/api/stats")

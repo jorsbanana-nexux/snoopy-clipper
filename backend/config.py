@@ -86,6 +86,22 @@ DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 COOKIES_FROM_BROWSER = env("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE = env("COOKIES_FILE", "")
 
+# ============ MULTI-USER & BILLING (gap #6 — default NONAKTIF) ============
+# MULTIUSER=1 -> registrasi/login akun + kunci API per-user + kuota per plan
+# + halaman login otomatis di UI + endpoint billing (/api/auth/*, /api/billing/*).
+# Saat MULTIUSER=1 biarkan API_KEY KOSONG (auth per-user yang berlaku).
+MULTIUSER = env("MULTIUSER", "0") == "1"
+PLAN_FREE_DAILY_MINUTES = float(env("PLAN_FREE_DAILY_MINUTES", "30"))
+PLAN_PRO_DAILY_MINUTES = float(env("PLAN_PRO_DAILY_MINUTES", "240"))
+PLAN_PRO_PRICE_IDR = int(env("PLAN_PRO_PRICE_IDR", "39000"))
+# Email akun admin — bisa grant plan manual via POST /api/billing/grant.
+ADMIN_EMAIL = env("ADMIN_EMAIL", "")
+# Midtrans opsional: TANPA ini checkout otomatis mode MANUAL (transfer bank,
+# admin grant) — bisa jualan tanpa menunggu approve payment gateway.
+# Server key sandbox berawalan "SB-Mid-server-". Webhook: /api/billing/midtrans-webhook
+MIDTRANS_SERVER_KEY = env("MIDTRANS_SERVER_KEY", "")
+MIDTRANS_IS_PRODUCTION = env("MIDTRANS_IS_PRODUCTION", "0") == "1"
+
 # ============ OTAK AI (Gemini) — satu-satunya layanan AI eksternal ============
 GEMINI_API_KEY = env("GEMINI_API_KEY")
 GEMINI_MODEL = env("GEMINI_MODEL", "gemini-3.1-pro-preview")  # tertinggi duluan, turun otomatis kalau bermasalah
