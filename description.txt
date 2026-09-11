@@ -1,0 +1,39 @@
+DESKRIPSI & KREDIT — snoopy-clipper
+===================================
+
+(Bagian deskripsi video otomatis menyusul — untuk sekarang file ini berisi
+ KREDIT saja, sesuai keputusan owner. Kredit per klip juga tersimpan otomatis
+ di library/<video_id>/meta.json pada field "bgm", jadi nanti tinggal dirakit.)
+
+Musik latar (BGM) diambil dari katalog Kevin MacLeod — incompetech.com,
+berlisensi Creative Commons Attribution 4.0 International (CC BY 4.0).
+Ketika klip memakai salah satu track di bawah, salin baris kreditnya ke
+deskripsi video yang diunggah:
+
+  "Monkeys Spinning Monkeys" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Fluffing a Duck" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Sneaky Snitch" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Carefree" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Life of Riley" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Bright Wish" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Wallpaper" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Groove Grove" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Deliberate Thought" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Heroic Age" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Achaidh Cheide" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Frozen Star" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Impact Lento" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Clash Defiant" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Take the Lead" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Prelude and Action" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Hidden Agenda" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Danse Macabre" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Ossuary 5 - Rest" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Heartbreaking" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Echoes of Time" — Kevin MacLeod (incompetech.com), CC BY 4.0
+  "Rynos Theme" — Kevin MacLeod (incompetech.com), CC BY 4.0
+
+Ringkasan lisensi (boleh ditempel juga di deskripsi):
+  Music: Kevin MacLeod (incompetech.com)
+  Licensed under Creative Commons: By Attribution 4.0
+  https://creativecommons.org/licenses/by/4.0/

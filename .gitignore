@@ -1,0 +1,24 @@
+.env
+cookies.txt
+*_cookies.txt
+cookies_*.txt
+downloads/
+library/
+jobs/
+models/
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+bgm/
+model_health.json
+
+# artefak kerja tes
+thumb_tmp/
+logs/
+
+# Font teks thumbnail podcast: dipakai LOKAL saja — JANGAN didistribusikan
+# via repo (lisensi font = tanggung jawab pemilik, jangan publish)
+assets/fonts/*.ttf
+assets/fonts/*.otf

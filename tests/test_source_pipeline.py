@@ -1,0 +1,125 @@
+"""Kontrak cepat, offline, untuk URL, cache media, dan transkrip platform."""
+import json
+
+from backend import captions, downloader
+
+
+def test_youtube_kids_is_normalized_and_remains_detectable():
+    url = "https://www.youtubekids.com/watch?v=abcDEF_123&feature=share"
+    assert downloader.normalize_url(url) == "https://www.youtube.com/watch?v=abcDEF_123"
+    assert downloader.detect_kids(url, "", "") is True
+
+
+def test_youtube_profile_home_uses_real_videos_tab():
+    assert downloader._youtube_profile_videos_url("https://www.youtube.com/@creator") == (
+        "https://www.youtube.com/@creator/videos")
+    assert downloader._youtube_profile_videos_url(
+        "https://www.youtube.com/channel/UC123/videos?view=0") == (
+        "https://www.youtube.com/channel/UC123/videos?view=0")
+    assert downloader._youtube_profile_videos_url(
+        "https://www.youtube.com/watch?v=abcDEF_123") == "https://www.youtube.com/watch?v=abcDEF_123"
+
+
+def test_cached_media_accepts_non_mp4_and_prefers_mp4(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: True)
+    base = tmp_path / "source"
+    webm = tmp_path / "source.webm"
+    webm.write_bytes(b"x" * 2048)
+    assert downloader.cached_media(base) == webm
+    mp4 = tmp_path / "source.mp4"
+    mp4.write_bytes(b"x" * 2048)
+    assert downloader.cached_media(base) == mp4
+
+
+def test_json3_removes_rolling_caption_overlap():
+    raw = json.dumps({"events": [
+        {"tStartMs": 0, "dDurationMs": 1000, "segs": [{"utf8": "Halo apa"}]},
+        {"tStartMs": 900, "dDurationMs": 1100, "segs": [{"utf8": "Halo apa kabar"}]},
+        {"tStartMs": 1900, "dDurationMs": 1200, "segs": [{"utf8": "kabar baik semua"}]},
+    ]})
+    parsed = captions._parse_json3(raw, "id")
+    assert [line["text"] for line in parsed["lines"]] == ["Halo apa", "kabar", "baik semua"]
+
+
+def test_vtt_accepts_timestamp_without_hour_component():
+    raw = "WEBVTT\n\n00:01.250 --> 00:03.500\nHalo dunia\n"
+    parsed = captions._parse_vtt(raw, "id")
+    assert parsed["lines"] == [{"start": 1.25, "end": 3.5, "text": "Halo dunia"}]
+
+
+def test_channel_picker_rejects_live_and_returns_playable_url():
+    entries = [
+        {"title": "Live", "url": "https://example.test/live", "live_status": "is_live"},
+        {"title": "Video terbaik", "url": "https://example.test/v", "duration": 600,
+         "view_count": 12000},
+    ]
+    url, title, why = downloader.pick_channel_best(entries)
+    assert (url, title) == ("https://example.test/v", "Video terbaik")
+    assert "views" in why
+
+
+def test_duration_zero_falls_back_to_download_and_probe(monkeypatch):
+    """Instagram dsb. tidak melaporkan durasi — job harus UNDUH lalu ukur,
+    bukan gagal. Verifikasi: jalur file lokal dipakai setelahnya."""
+    import threading
+    from backend import pipeline
+
+    calls = {"download": 0, "probe": 0}
+    fake_video = pipeline.config.DOWNLOADS_DIR / "probe_src.mp4"
+    fake_video.write_bytes(b"x" * 2048)
+
+    def fake_download_full(job_id, info):
+        calls["download"] += 1
+        return fake_video
+
+    def fake_get_info_local(path):
+        calls["probe"] += 1
+        return {"id": "probe", "title": "T", "duration": 42.0, "uploader": "u"}
+
+    # matangkan semua langkah SETELAH probe supaya test fokus ke kontrak fallback
+    monkeypatch.setattr(pipeline.downloader, "resolve_url",
+                        lambda u, max_entries=None: ("video", {}, None))
+    monkeypatch.setattr(pipeline.downloader, "get_info", lambda u: {
+        "id": "ig_reel", "title": "Reel", "duration": 0.0, "uploader": "x"})
+    monkeypatch.setattr(pipeline, "_download_full", fake_download_full)
+    monkeypatch.setattr(pipeline.downloader, "get_info_local", fake_get_info_local)
+    monkeypatch.setattr(pipeline, "_transcribe_full",
+                        lambda jid, info, path, dur: {"lines": [], "words": [], "language": "id"})
+    monkeypatch.setattr(pipeline, "_frames", lambda jid, vp, info, dur: None)
+    monkeypatch.setattr(pipeline, "_brain", lambda jid, tr, dur, fr: [])
+    monkeypatch.setattr(pipeline, "_render_absolute",
+                        lambda jid, info, m, vp, full_words: None)
+
+    job_id = pipeline.create_job("https://www.instagram.com/reel/xyz123/")
+    pipeline._queue.join()  # tunggu worker selesai
+    job = pipeline.get_job(job_id)
+    assert calls["download"] == 1 and calls["probe"] == 1
+    assert job["status"] == "done", job["error"]
+    assert job["video"]["duration"] == 42.0
+
+
+def test_range_format_prefers_avc1():
+    """Unduhan rentang WAJIB mendahulukan avc1 — VP9 + force_keyframes terbukti
+    bisa menghasilkan file hanya-audio tanpa error (stream video hilang diam-diam)."""
+    fmt = downloader._range_format(1080)
+    assert "vcodec^=avc1" in fmt
+    assert fmt.index("vcodec^=avc1") < fmt.index("best[height<=1080]")
+    # fallback tetap ada utk platform tanpa avc1 (TikTok/dll)
+    assert "best[height<=1080]/best" in fmt
+
+
+def test_cached_media_discards_poisoned_audio_only_file(tmp_path, monkeypatch):
+    """Cache harus sembuh sendiri: file tanpa stream video (merge rusak /
+    sisa proses ter-kill) DIBUANG, bukan dipakai lagi sampai selamanya."""
+    import pytest
+    base = tmp_path / "source"
+    bad = tmp_path / "source.mp4"
+    bad.write_bytes(b"poison" * 500)  # >1024 byte, tanpa stream video
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: False)
+    assert downloader.cached_media(base) is None
+    assert not bad.exists()  # file racun terhapus
+
+    good = tmp_path / "source.mp4"
+    good.write_bytes(b"video" * 500)
+    monkeypatch.setattr(downloader, "_has_video_stream", lambda p: True)
+    assert downloader.cached_media(base) == good

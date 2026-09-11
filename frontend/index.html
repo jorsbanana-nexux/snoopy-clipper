@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snoopy Clipper</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1><span class="logo">Snoopy</span> Clipper</h1>
+      <p class="tag">Tempel URL → <b>GetClips</b> → shorts vertikal siap download.</p>
+    </header>
+
+    <section class="input-row">
+      <input id="url" type="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+      <button id="go">GetClips</button>
+    </section>
+
+    <section id="job" class="panel hidden"></section>
+
+    <h2>Library</h2>
+    <section id="library" class="grid"></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
