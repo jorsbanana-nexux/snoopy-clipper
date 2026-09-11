@@ -21,6 +21,25 @@ logger = logging.getLogger(__name__)
 _LANG_PRIORITY = ["id", "en", "ja", "ko", "es", "pt", "zh-Hans", "zh", "ar"]
 
 
+def _pick_caption(info) -> tuple:
+    """Pilih track transkrip TERBAIK untuk kontrak bahasa klip.
+    Manual (unggahan pembuat) > auto. Track '-orig' = bahasa ASLI yang
+    DIUCAPKAN di video — WAJIB menang atas auto-terjemahan ('id' utk video
+    English = terjemahan mesin yang merusak kontrak bahasa). Terbukti hidup
+    2026-09-11: video English keluar klip full Indonesia karena 'id'
+    prioritas pertama. -> (lang, fmts) atau (None, None)."""
+    manual = info.get("subtitles") or {}
+    auto = info.get("automatic_captions") or {}
+    for l in _LANG_PRIORITY + sorted(manual):
+        if manual.get(l):
+            return l, manual[l]
+    origs = sorted(k for k in auto if k.endswith("-orig") and auto.get(k))
+    for l in origs + [k[:-5] for k in origs] + _LANG_PRIORITY + sorted(auto):
+        if auto.get(l):
+            return l, auto[l]
+    return None, None
+
+
 def fetch(url: str):
     """
     Ambil transkrip platform.
@@ -40,16 +59,7 @@ def fetch(url: str):
         # cukup dianggap 'tanpa transkrip platform' -> fallback whisper.
         logger.warning("Captions: metadata tak terambil (%s) -> jalur whisper", e)
         return None
-    manual = info.get("subtitles") or {}
-    auto = info.get("automatic_captions") or {}
-    lang, fmts = None, None
-    for source in (manual, auto):  # subtitle manual lebih akurat dari auto
-        for l in _LANG_PRIORITY + sorted(source):
-            if source.get(l):
-                lang, fmts = l, source[l]
-                break
-        if fmts:
-            break
+    lang, fmts = _pick_caption(info)
     if not fmts:
         return None
     by_ext = {f.get("ext"): f for f in fmts if isinstance(f, dict)}
