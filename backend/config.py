@@ -37,7 +37,11 @@ def _load_env():
             val = val.split("#", 1)[0].strip()
         os.environ.setdefault(key, val)
 
-_load_env()
+# SNOOPY_TEST_DEFAULTS=1 (dipasang otomatis oleh tests/conftest.py):
+# suite HARUS hijau di PC mana pun -> test selalu menguji DEFAULT, bukan
+# override di .env lokal siapa pun. Mode produksi TIDAK terpengaruh.
+if not os.environ.get("SNOOPY_TEST_DEFAULTS"):
+    _load_env()
 
 
 def env(key: str, default: str = "") -> str:
