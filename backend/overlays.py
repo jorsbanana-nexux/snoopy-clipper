@@ -70,9 +70,16 @@ def _wrap(draw, text, f, max_w):
 
 
 def _hook_font(size: int):
-    """Anton (Google Fonts, OFL — bebas komersial): tebal padat ala hook
-    short-form profesional. Diunduh SEKALI + cache permanen models/fonts/;
-    gagal unduh -> font bold sistem -> default. TIDAK PERNAH raise."""
+    """Milky Moringa Bold (pilihan owner 2026-09-12, unduh sekali via
+    fontdisplay) -> fallback Anton (Google Fonts, OFL) -> font sistem.
+    Cache permanen models/fonts/; TIDAK PERNAH raise."""
+    try:
+        from . import fontdisplay
+        mf = fontdisplay.ensure()
+        if mf:
+            return ImageFont.truetype(mf, size)
+    except Exception:
+        pass
     try:
         from . import config
         p = config.MODELS_DIR / "fonts" / "anton.ttf"
@@ -103,7 +110,8 @@ def _with_alpha(im, a: float):
 
 def make_hook(hook_text, tw, th, path, dur=2.6):
     """APNG teks HOOK besar (tampil 2-3 detik pertama): putih BERSIH tebal
-    (font Anton) TANPA outline hitam — hanya shadow gelap banyak-lapis radius
+    (font Milky Moringa Bold, fallback Anton) TANPA outline hitam — hanya
+    shadow gelap banyak-lapis radius
     jauh ala gradient (permintaan owner 2026-09-11). Animasi fade subtitle:
     lead-in transparan -> fade-in -> hold -> FADE-OUT + BLUR memudar."""
     text = " ".join((hook_text or "").split()[:6])

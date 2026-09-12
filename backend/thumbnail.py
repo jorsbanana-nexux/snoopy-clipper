@@ -228,6 +228,13 @@ def _font_candidates():
     cands = []
     if config.THUMB_FONT_FILE:
         cands.append(Path(config.THUMB_FONT_FILE))
+    try:                                    # Milky Moringa (owner 2026-09-12)
+        from . import fontdisplay
+        mf = fontdisplay.ensure()
+        if mf:
+            cands.append(mf)
+    except Exception:
+        pass
     fdir = config.BASE_DIR / "assets" / "fonts"
     if fdir.is_dir():
         cands += sorted(p for p in fdir.iterdir()

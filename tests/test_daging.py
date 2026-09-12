@@ -45,6 +45,20 @@ def test_watermark_dua_warna_transparan_dan_cache(tmp_path):
     assert yellow > 20 and white > 20 and transparent > 0  # dua warna + alpha
 
 
+def test_fontdisplay_milky_moringa_unduh_dan_charset(tmp_path):
+    """Font display pilihan owner: pastikan terunduh + PIL bisa memuatnya.
+    Offline -> skip (fontdisplay.ensure toleran gagal by design)."""
+    from backend import fontdisplay
+    p = fontdisplay.ensure()
+    if p is None:
+        import pytest
+        pytest.skip("font tak terunduh (offline?) — fallback Anton dipakai")
+    from PIL import Image, ImageDraw, ImageFont
+    f = ImageFont.truetype(p, 48)
+    probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    assert probe.textlength("0123456789 .,!?-", font=f) > 200  # charset ada
+
+
 def test_hook_png(tmp_path):
     p = overlays.make_hook("Rahasia kenapa dia cepat kaya", 720, 1280,
                            tmp_path / "hook.png")
