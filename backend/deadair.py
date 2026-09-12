@@ -35,7 +35,13 @@ def segments(words, clip_start: float, clip_end: float):
         segs.append((cur, c0))
         cur = c1
     segs.append((cur, clip_end))
-    if len(segs) < 2 or sum(e - s for s, e in segs) < dur * 0.6:
+    total = sum(e - s for s, e in segs)
+    if len(segs) < 2 or total < dur * 0.6:
+        return [(clip_start, clip_end)]
+    # KONTRAK MIN (owner 2026-09-12): klip MINIMAL 60 dtk. Kalau hasil
+    # potong jeda malah jatuh di bawah MIN_CLIP_SEC, jeda dipertahankan
+    # (klip utuh lebih panjang > klip rapat yang melanggar kontrak).
+    if config.MIN_CLIP_SEC and total < config.MIN_CLIP_SEC:
         return [(clip_start, clip_end)]
     return segs
 

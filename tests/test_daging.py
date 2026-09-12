@@ -54,7 +54,8 @@ def test_hook_png(tmp_path):
     assert overlays.make_hook("", 720, 1280, tmp_path / "x.png") is None
 
 
-def test_deadair_segments_guard_lengkap():
+def test_deadair_segments_guard_lengkap(monkeypatch):
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 0.0)  # mekanik murni, tanpa lantai
     words = [{"start": float(i), "end": i + 0.7, "text": "k"} for i in range(10)]
     for w in words[4:]:                          # sisip jeda napas 1.2s
         w["start"] += 1.2
@@ -72,6 +73,16 @@ def test_deadair_segments_guard_lengkap():
     jarang = [{"start": 0.0, "end": 0.7, "text": "a"},
               {"start": 6.0, "end": 6.7, "text": "b"}]
     assert deadair.segments(jarang, 0.0, 7.0) == [(0.0, 7.0)]  # guard 40%/min-seg
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 60.0)  # KONTRAK MIN 60 dtk:
+    # hasil potong (10.7) < 60 -> jeda dipertahankan, klip utuh 11.9
+    assert deadair.segments(words, 0.0, 11.9) == [(0.0, 11.9)]
+    # hasil potong masih >= MIN (jeda 1.2s pada klip 61.9 -> 60.7) -> potong jalan
+    w61 = [{"start": float(i), "end": i + 0.7, "text": "k"} for i in range(50)]
+    for w in w61[30:]:
+        w["start"] += 1.2
+        w["end"] += 1.2
+    segs = deadair.segments(w61, 0.0, 61.9)
+    assert sum(e - s for s, e in segs) >= 60.0
 
 
 def test_deadair_rebase_keyframes():
