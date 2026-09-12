@@ -9,6 +9,14 @@ import pytest
 from backend import brain, config
 
 
+@pytest.fixture(autouse=True)
+def _durasi_min_lama(monkeypatch):
+    """Default produksi MIN_CLIP_SEC kini 60 dtk (owner 2026-09-12). Test di
+    file ini memakai klip pendek (fokus ke logika lain) -> kembalikan 15."""
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 15.0)
+
+
+
 def _transcript(lang="en"):
     return {"language": lang,
             "lines": [{"start": 0, "end": 20, "text": "hello world"}],

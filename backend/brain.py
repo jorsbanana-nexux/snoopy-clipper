@@ -51,7 +51,7 @@ LANGKAH 4 — VERIFIKASI SILANG (wajib sebelum menjawab): baca ULANG potongan tr
 
 ATURAN KETAT momen:
 1. Utuh dan berdaging: konteks awal yang LANGSUNG jelas bagi penonton baru -> membangun -> pay-off / klimaks / twist / punchline / kesimpulan kuat. JANGAN basa-basi, iklan, sapaan kosong, atau momen asal tanpa isi.
-2. start TEPAT di kalimat pertama yang membuat penonton baru langsung paham konteksnya (contoh sempurna: "John, kenapa sih mobilmu bisa dicuri?" — pertanyaan + konteks dalam satu napas), end TEPAT setelah pay-off selesai. start & end HARUS timestamp yang benar-benar muncul di transkrip. Ini yang paling penting.
+2. start TEPAT di kalimat pertama yang membuat penonton baru langsung paham konteksnya (contoh sempurna: "John, kenapa sih mobilmu bisa dicuri?" — pertanyaan + konteks dalam satu napas), end TEPAT setelah pay-off selesai, dan KALIMAT TERAKHIR klip WAJIB PENUTUP yang memuaskan (punchline/kesimpulan/twist) — bukan kata transisi basa-basi. end TIDAK BOLEH menjalar melewati penutup demi mengejar durasi: begitu penutup selesai, klip SELESAI (subtitle & potongan berhenti di situ — jangan bablas ke sisa video). start & end HARUS timestamp yang benar-benar muncul di transkrip. Ini yang paling penting.
 3. Durasi tiap potongan {min_clip}-{max_clip} detik. JUMLAH FLEKSIBEL — ikuti kualitas video, BUKAN kuota: pilih SEMUA momen yang benar-benar layak (score 7-10). Jangan paksa jumlah (video datar = sedikit saja), jangan buang momen layak, dan jangan tambah momen asal demi jumlah. Bisa jadi 3, bisa jadi 30 — yang penting setiap klip layak viral. Batas teknis {max_clips} hanyalah pengaman. Tidak boleh saling tumpang tindih.
 4. Gunakan FRAME (kalau dikirim) untuk menilai kualitas visual: ekspresi kuat, reaksi, aksi, kejadian di layar. Momen kuat di teks TAPI lemah/monoton secara visual harus kalah dari momen yang kuat di keduanya.
 5. Adaptif jenis konten: podcast/wawancara -> hot take, kisah pribadi, adu argumen, pengakuan mengejutkan; gaming -> clutch, rage, lucu tak terduga; berita/storytime -> bagian paling mengejutkan dengan detail paling spesifik; edukasi -> tip paling berguna dengan contoh nyata; vlog -> momen paling emosional/tak terduga.
@@ -492,8 +492,9 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
         tol = 0.8 if is_loop else 2.0
         s = max(0.0, _snap(s, words, "start", lines, tol))
         e = min(duration, _snap(e, words, "end", lines, tol))
-        if e - s < config.MIN_CLIP_SEC * 0.6:
-            continue  # terlalu pendek setelah snap -> buang
+        if e - s < config.MIN_CLIP_SEC * 0.9:
+            continue  # terlalu pendek setelah snap -> buang (owner: klip
+            # minimal 60 dtk; snap ±2 dtk per sisi -> toleransi 10%, bukan 40%)
         if e - s > config.MAX_CLIP_SEC:
             e = s + config.MAX_CLIP_SEC
         if out and s < out[-1]["end"] - 1.0:
@@ -544,10 +545,16 @@ _key_health = {}   # sesi: kunci kuota-habis -> digantikan tetangga SEGERA
 
 
 def _brain_keys() -> list:
-    """Kolam kunci: BRAIN_KEYS (khusus otak) atau [GEMINI_API_KEY] (legacy)."""
-    if config.BRAIN_KEYS:
-        return list(config.BRAIN_KEYS)
-    return [config.GEMINI_API_KEY] if config.GEMINI_API_KEY else []
+    """Kolam kunci: GEMINI_API_KEY (KUNCI UTAMA) + BRAIN_KEYS — SEMUA kunci
+    aktif, tak ada yang menganggur (owner 2026-09-12: 6 kunci, tiap peran
+    memegang kunci sendiri + rantai fallback menjangkau seluruh kolam).
+    Duplikat dibuang. BRAIN_KEYS kosong = mode 1-otak lama, IDENTIK 100%."""
+    pool, seen = [], set()
+    for k in [config.GEMINI_API_KEY, *config.BRAIN_KEYS]:
+        if k and k not in seen:
+            seen.add(k)
+            pool.append(k)
+    return pool
 
 
 def _role_key(role: str, offset: int = 0) -> str:
@@ -627,7 +634,9 @@ rentangnya dengan teliti di transkrip, lalu tanya:
    emosi) = keep false — TOLAK tanpa ragu.
 4. start/end harus TEPAT di batas kata/kalimat transkrip — kalau kurang tepat
    berikan start_fix/end_fix (detik, HARUS ada di transkrip); kalau sudah
-   tepat isi 0.
+   tepat isi 0. Kalau end MENJALAR melewati pay-off (ekor basa-basi/
+   transisi/iklan), end_fix memotong mundur TEPAT setelah penutup selesai —
+   klip tidak boleh bablas ke sisa video.
 5. hook_improved: versi hook yang lebih tajam dalam 1 kalimat pendek; kalau
    sudah bagus, salin apa adanya.
 Bahasa keluaran WAJIB sama dengan bahasa transkrip. Balas HANYA JSON:
@@ -659,10 +668,14 @@ KANDIDAT:
 _D_PROMPT = """Kamu DIREKTUR VISUAL. Frame dikirim SETIAP ±{iv:.1f} detik dari awal
 video (frame i ≈ detik i×interval) dalam urutan waktu; rentang kandidat
 dalam detik absolut video. Untuk TIAP kandidat:
-1. "layout": "duo" HANYA kalau frame pada rentangnya benar-benar terbelah
-   dua zona ATAS-BAWAH (wajah/pembicara di atas + gameplay/demo/presentasi
-   di bawah) sehingga subtitle satu tempat menutupi salah satu zona; ragu =
-   "single".
+1. "layout": "duo" kalau frame pada rentangnya terbelah dua zona ATAS-BAWAH
+   (wajah/pembicara di satu zona + gameplay/demo/presentasi/panel orang
+   lain di zona satunya) — termasuk podcast berdua/ramai yang layarnya
+   terbelah; TIAP zona boleh berisi BANYAK orang. Subtitle hanya punya
+   SATU tempat, jadi duo WAJIB dipakai saat dua zona sama-sama penting —
+   jangan tunda-tunda karena ragu-ragu halus. "single" hanya kalau frame
+   benar-benar SATU fokus utuh, atau kamu sungguh-sungguh ragu (salah
+   posisi lebih merusak daripada posisi normal).
 2. "layout_events": kalau terbelah hanya sebagian rentang:
    [{{"t": <detik RELATIF dari start klip>, "layout": "single"|"duo"}}]; utuh = [].
 3. "topic_tag": tag emoji topik thumbnail — HANYA dari: finance | ekonomi |

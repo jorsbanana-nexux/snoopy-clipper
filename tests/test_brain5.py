@@ -1,7 +1,19 @@
 """5 OTAK SPESIALIS: ruang kerja per-tugas (kunci sendiri, paralel, fallback
 model tetap utuh). Kontrak: BRAIN_KEYS kosong = mode 1-otak IDENTIK lama;
-kegagalan satu otak tak pernah merusak kurasi kurator."""
+kegagalan satu otak tak pernah merusak kurasi kurator.
+Kontrak 2026-09-12: GEMINI_API_KEY (kunci utama) SELALU ikut kolam bersama
+BRAIN_KEYS — tak ada kunci yang menganggur."""
+import pytest
+
 from backend import brain, config
+
+
+@pytest.fixture(autouse=True)
+def _durasi_min_lama(monkeypatch):
+    """Default produksi MIN_CLIP_SEC kini 60 dtk (owner 2026-09-12). Test di
+    file ini memakai klip pendek (fokus ke logika lain) -> kembalikan 15."""
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 15.0)
+
 
 
 def test_role_key_round_robin_dan_kunci_sakit(monkeypatch):
@@ -133,3 +145,27 @@ def test_verifikator_score_bawah_floor_tetap_dibuang(monkeypatch):
           "lines": [{"start": 0.0, "end": 2.0, "text": "tes"}]}
     out = brain.find_moments(tr, 60.0, None, None, meta={"title": "t"})
     assert out == []                                     # floor 6 menolak
+
+def test_kolam_kunci_utama_tak_pernah_menganggur(monkeypatch):
+    """Owner punya 6 kunci (1 utama + 5 otak) — SEMUA harus aktif: kunci utama
+    ikut kolam, duplikat dibuang, rantai fallback tiap peran menjangkau
+    seluruh kolam (tak ada pekerjaan tanpa pegangan)."""
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "utama")
+    monkeypatch.setattr(config, "BRAIN_KEYS",
+                        ["b1", "b2", "utama", "b3", "b4"])
+    brain._key_health.clear()
+    assert brain._brain_keys() == ["utama", "b1", "b2", "b3", "b4"]
+    assert brain._role_key("kurator") == "utama"      # kunci utama pegang kurator
+    assert brain._role_key("direktur") == "b3"        # peran lain kunci sendiri
+    # rantai fallback kurator = SELURUH kolam (6 kunci pun tak ada nganggur)
+    seen = {brain._role_key("kurator", off) for off in range(5)}
+    assert seen == {"utama", "b1", "b2", "b3", "b4"}
+
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")   # skenario murni 6 otak
+    monkeypatch.setattr(config, "BRAIN_KEYS",
+                        ["k1", "k2", "k3", "k4", "k5", "k6"])
+    brain._key_health.clear()
+    pool = brain._brain_keys()
+    assert len(pool) == 6 and brain._multi_mode() is True
+    assert {brain._role_key(r) for r in brain.ROLES} <= set(pool)  # semua pegang
+

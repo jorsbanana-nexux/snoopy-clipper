@@ -55,7 +55,9 @@ def test_mix_pass_bgm_dan_sfx_bareng(tmp_path):
     assert abs(cutter.probe_duration(out) - 2.0) < 0.35  # BGM + 2 whoosh + pop
 
 
-def test_brain_standar_akhir_dan_kurasi_skor():
+def test_brain_standar_akhir_dan_kurasi_skor(monkeypatch):
+    # klip pendek 30 dtk: test fokus ke kurasi skor, bukan durasi minimal baru
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 15.0)
     tr = {"lines": [{"start": 0.0, "end": 2.0, "text": "tes"}], "language": "id"}
     p = brain._build_prompt(tr, 60.0, [], None, meta={"title": "t", "uploader": "u"})
     assert "STANDAR AKHIR" in p and "BERHENTI scroll" in p

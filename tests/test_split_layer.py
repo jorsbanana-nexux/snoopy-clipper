@@ -85,7 +85,16 @@ def test_anti_flicker_dan_validasi_events():
     assert "\\pos(540,480)" not in ass
 
 
-def test_prompt_dan_validate_otak():
+def test_prompt_direktur_duo_tegas_dan_multi_orang():
+    """Spec owner 2026-09-12: duo WAJIB saat dua zona sama-sama penting
+    (podcast/gameplay dsb), tiap zona boleh BANYAK orang; ragu -> single."""
+    dp = brain._D_PROMPT
+    assert "duo WAJIB" in dp
+    assert "BANYAK orang" in dp
+
+
+def test_prompt_dan_validate_otak(monkeypatch):
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 15.0)  # fokus layout, bukan durasi
     tr = {"lines": [{"start": 0.0, "end": 2.0, "text": "tes"}], "language": "id"}
     p = brain._build_prompt(tr, 60.0, [], None, meta={"title": "t", "uploader": "u"})
     assert '"layout": "single"' in p and "layout_events" in p

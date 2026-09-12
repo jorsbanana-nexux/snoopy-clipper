@@ -181,7 +181,7 @@ BRAIN_FRAMES_PROXY = env("BRAIN_FRAMES_PROXY", "1") == "1"  # video panjang: pro
 
 # ============ PEMILIHAN MOMEN ============
 MAX_CLIPS = int(env("MAX_CLIPS", "100"))  # PLAFON pengaman saja — jumlah klip = keputusan otak AI sesuai kualitas video
-MIN_CLIP_SEC = float(env("MIN_CLIP_SEC", "15"))
+MIN_CLIP_SEC = float(env("MIN_CLIP_SEC", "60"))  # owner 2026-09-12: klip MINIMAL 60 dtk, boleh lebih; turunkan via .env bila mau pendek
 MAX_CLIP_SEC = float(env("MAX_CLIP_SEC", "90"))
 
 # ============ SPEED (low-spec friendly) ============
@@ -251,6 +251,8 @@ MIN_CLIP_SCORE = float(env("MIN_CLIP_SCORE", "6.0"))
 # direktur masing-masing dipegang otak BERBEDA yang jalan PARALEL — atensi
 # tak terbagi-bagi, kuota tak rebutan, verifikasi 2-tahap aktif.
 # Kosong = mode 1-otak lama (pakai GEMINI_API_KEY) — perilaku IDENTIK 100%.
+# GEMINI_API_KEY SELALU ikut kolam sebagai KUNCI UTAMA saat BRAIN_KEYS
+# terpasang (owner 2026-09-12) — tidak ada satu pun kunci yang menganggur.
 BRAIN_KEYS = [k.strip() for k in env("BRAIN_KEYS", "").split(",") if k.strip()]
 BRAIN_MODE = env("BRAIN_MODE", "auto")  # auto (multi bila >=2 kunci) | off | multi
 BGM_DIR = BASE_DIR / "bgm"

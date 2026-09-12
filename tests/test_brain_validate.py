@@ -4,11 +4,23 @@ Jalur caption tidak punya word-timestamp (words=[]): sebelumnya timestamp klip
 mentah-mentah dari LLM. Sekarang start/end disentak ke batas BARIS terdekat —
 potongan tidak boleh nyangkal di tengah kalimat atau memotong pay-off.
 """
-from backend import brain
+import pytest
+
+from backend import brain, config
 
 
-def test_validate_snaps_to_line_boundaries_when_no_words():
+@pytest.fixture(autouse=True)
+def _durasi_min_lama(monkeypatch):
+    """Default produksi MIN_CLIP_SEC kini 60 dtk (owner 2026-09-12). Test di
+    file ini memakai klip pendek (fokus ke logika lain) -> kembalikan 15."""
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 15.0)
+
+
+
+def test_validate_snaps_to_line_boundaries_when_no_words(monkeypatch):
     """Jalur caption: start/end bergeser ke awal/akhir baris terdekat."""
+    # hasil snap = klip 9.0 dtk persis -> MIN 10 (floor 0.9 = 9.0 tepat lolos)
+    monkeypatch.setattr(config, "MIN_CLIP_SEC", 10.0)
     lines = [
         {"start": 10.0, "end": 14.0, "text": "kalimat a"},
         {"start": 15.2, "end": 19.0, "text": "kalimat b"},
