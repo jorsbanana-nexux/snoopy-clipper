@@ -89,6 +89,34 @@ DAILY_MINUTES_LIMIT = float(env("DAILY_MINUTES_LIMIT", "0"))
 #   Cara 1 yang sudah diketahui gagal tiap kali).
 COOKIES_FROM_BROWSER = env("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE = env("COOKIES_FILE", "")
+# Chrome MENGUNCI Cookies.sqlite saat prosesnya hidup (dan Chrome 127+ menambah
+# App-Bound Encryption) -> penyalinan file sering gagal sepersekian detik.
+# Sebelum menyerah, coba ulang beberapa kali dengan jeda (murah, sekali per sesi).
+COOKIE_RETRY = int(env("COOKIE_RETRY", "2"))          # 0 = matikan retry
+COOKIE_RETRY_DELAY = float(env("COOKIE_RETRY_DELAY", "0.75"))  # detik (dikali nomor percobaan)
+# Setelah cookie browser terbukti tak terbaca, beri tahu user SEKALI di konsol
+# supaya tidak menebak-nebak kenapa video tertentu gagal.
+COOKIE_WARN = env("COOKIE_WARN", "1") == "1"
+
+# ============ RUNTIME JAVASCRIPT (EJS) — WAJIB untuk YouTube sejak yt-dlp 2025+ ====
+# yt-dlp memecahkan challenge JS YouTube lewat runtime JS EKSTERNAL. Tanpa
+# runtime yang terpasang, client `android_vr` menjawab UNPLAYABLE dan yt-dlp
+# berhenti dengan "This video is not available" — TERUTAMA pada video
+# "Made for Kids" / YouTube Kids / "Choices for families". Jadi ini bukan
+# soal cookie. deno adalah runtime yang direkomendasikan.
+#   JS_RUNTIMES=deno                  (default: cukup begini kalau deno di PATH)
+#   JS_RUNTIMES=deno,node             (beberapa runtime sekaligus)
+#   JS_RUNTIME_PATH=C:/Users/me/.deno/bin/deno.exe   (kalau tidak di PATH)
+# Kosongkan untuk mematikan (perilaku lama).
+JS_RUNTIMES = env("JS_RUNTIMES", "deno")
+JS_RUNTIME_PATH = env("JS_RUNTIME_PATH", "")
+# Unduh skrip EJS otomatis kalau paket yt-dlp-ejs tidak terpasang:
+#   REMOTE_COMPONENTS=ejs:npm      (deno/bun saja)
+#   REMOTE_COMPONENTS=ejs:github   (semua runtime)
+# Default ejs:github: skrip EJS diunduh otomatis dari repo resmi yt-dlp/ejs
+# (cache setelah sukses) sehingga tetap jalan walau paket yt-dlp-ejs belum
+# terpasang. Kalau pakai deno, "ejs:npm" lebih cepat (tanpa perlu GitHub).
+REMOTE_COMPONENTS = env("REMOTE_COMPONENTS", "ejs:github")
 
 # ============ MULTI-USER & BILLING (gap #6 — default NONAKTIF) ============
 # MULTIUSER=1 -> registrasi/login akun + kunci API per-user + kuota per plan

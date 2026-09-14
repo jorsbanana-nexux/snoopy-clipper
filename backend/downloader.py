@@ -5,7 +5,7 @@ File cache di downloads/ — video yang sama tidak diunduh dua kali.
 import glob
 import time
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import yt_dlp
 
@@ -19,9 +19,73 @@ def _cookiefile_path() -> Path:
     return Path(config.COOKIES_FILE or (config.BASE_DIR / "cookies.txt"))
 
 
+_JS_RUNTIME_NAMES = ("deno", "node", "quickjs", "bun")
+
+
+def _js_opts() -> dict:
+    """Opsi runtime JavaScript (EJS) — WAJIB untuk YouTube sejak yt-dlp 2025+.
+
+    Sejak akhir 2025 yt-dlp memecahkan challenge JS YouTube lewat runtime JS
+    eksternal (EJS). Tanpa runtime yang benar-benar ada, client ``android_vr``
+    menjawab UNPLAYABLE dan yt-dlp berhenti dengan "This video is not
+    available" — gejalanya paling kentara pada video "Made for Kids" /
+    YouTube Kids (yt-dlp issue #16693 & #16333). deno sebenarnya diaktifkan
+    yt-dlp secara default, TAPI hanya bila binernya ketemu di PATH; kalau
+    tidak, tidak ada runtime sama sekali. Jadi kita set eksplisit supaya
+    perilakunya tidak bergantung pada tebakan yt-dlp.
+
+    Formatnya persis seperti yang dipakai yt-dlp sendiri:
+    ``{'deno': {'path': None}}`` (lihat ``YoutubeDL`` -> ``js_runtimes``).
+    Runtime versi lama yang tidak mengenal opsi ini mengabaikannya dengan
+    aman — jadi tidak ada risiko regresi."""
+    names = [n.strip().lower() for n in (config.JS_RUNTIMES or "").split(",") if n.strip()]
+    names = [n for n in names if n in _JS_RUNTIME_NAMES]
+    if not names:
+        return {}
+    path = config.JS_RUNTIME_PATH or None
+    opts: dict = {"js_runtimes": {n: {"path": path} for n in names}}
+    comps = [c.strip() for c in (config.REMOTE_COMPONENTS or "").split(",") if c.strip()]
+    if comps:
+        # yt-dlp menyimpan remote_components sebagai set
+        opts["remote_components"] = set(comps)
+    return opts
+
+
+_KNOWN_BROWSERS = ("brave", "chrome", "chromium", "edge", "firefox",
+                   "opera", "safari", "vivaldi", "whale")
+
+
+def _cookiesfrombrowser_tuple():
+    """Terjemahkan config COOKIES_FROM_BROWSER menjadi tuple yt-dlp.
+
+    Bentuk yang didukung:
+        chrome                        -> ('chrome',)
+        chrome:Profile 7              -> ('chrome', 'Profile 7')
+        firefox:abc123.default-release -> ('firefox', 'abc123.default-release')
+
+    KENAPA PROFIL PENTING: kalau profil tidak disebut, yt-dlp menyisir SELURUH
+    folder User Data dan memakai berkas ``Cookies`` yang PALING BARU DIUBAH
+    (lihat ``_find_files`` + ``_newest`` di yt_dlp/cookies.py). Di Chrome dengan
+    beberapa profil, itu bisa profil yang SALAH — cookie YouTube tidak ikut,
+    lalu YouTube menjawab "Sign in to confirm you're not a bot". Menyebut profil
+    secara eksplisit menghapus seluruh kelas masalah itu.
+    """
+    spec = (config.COOKIES_FROM_BROWSER or "").strip()
+    if not spec:
+        return None
+    browser, _, rest = spec.partition(":")
+    browser, rest = browser.strip().lower(), rest.strip()
+    if browser not in _KNOWN_BROWSERS:
+        return (spec,)          # serahkan ke yt-dlp supaya pesan errornya gamblang
+    return (browser, rest) if rest else (browser,)
+
+
 def _cookie_opts() -> dict:
     """Opsi cookie yt-dlp — LAPIS BERTINGKAT, bukan salah satu doang:
-    1. cookiesfrombrowser (kalau diisi & belum terbukti rusak sesi ini)
+    1. cookiesfrombrowser (kalau diisi & belum terbukti rusak sesi ini) —
+       termasuk dukungan PROFILE eksplisit: ``chrome:Profile 7``. Tanpa
+       profil, yt-dlp memilih berkas Cookies paling baru diubah, yang bisa
+       berasal dari profil Chrome yang salah.
     2. cookies.txt (kalau file itu ADA) — dicoba baik saat browser tak
        diaktifkan MAUPUN sebagai cadangan begitu browser terbukti gagal
        (bug lama: _cookies_broken dulu langsung return {} tanpa pernah
@@ -29,47 +93,169 @@ def _cookie_opts() -> dict:
        jadi tidak berguna. Sekarang ditinjau ulang tiap panggilan.)
     3. tanpa cookie — video publik tetap bisa."""
     if config.COOKIES_FROM_BROWSER and not _cookies_broken:
-        return {"cookiesfrombrowser": (config.COOKIES_FROM_BROWSER,)}
+        spec = _cookiesfrombrowser_tuple()
+        if spec:
+            return {"cookiesfrombrowser": spec}
     cf = _cookiefile_path()
     if cf.exists():
         return {"cookiefile": str(cf)}
     return {}
 
 
+# Rantai exception yt-dlp bisa panjang; cari kata kunci di teks kumulatif.
+def _chain_text(exc: BaseException) -> str:
+    seen, parts, cur = set(), [], exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        parts.append(f"{type(cur).__name__}: {cur}")
+        cur = cur.__cause__ or cur.__context__
+    return " | ".join(parts)
+
+
+def _is_cookie_failure(exc: BaseException) -> bool:
+    """True kalau penyebab (termasuk rantai ``__cause__``/``__context__``)
+    memang soal cookie.
+
+    PENTING: pesan DownloadError yang sampai ke lapisan atas TIDAK selalu
+    memuat kata "cookie". Saat Cookies.sqlite gagal dibaca (Chrome sedang
+    terbuka & mengunci file di Windows / App-Bound Encryption — yt-dlp issue
+    #7271), yt-dlp kadang menutup ekstraksi YouTube dengan pesan akhir
+    "This video is not available"; penyebab cookie-nya hanya tersisa di
+    rantai exception. Deteksi naif ``"cookie" in str(e)`` melewatkan kasus
+    itu, sehingga fallback cookies.txt/tanpa-cookie TIDAK PERNAH jalan dan
+    job mati dengan pesan yang menyesatkan."""
+    seen = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if "cookie" in type(cur).__name__.lower():   # CookieLoadError, CookieError, ...
+            return True
+        if "cookie" in str(cur).lower():             # "Could not copy Chrome cookie database"
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+# Lock file sesaat: Chrome sedang menutup / melepas handle. Layak dicoba ulang.
+# HANYA sinyal kunci tingkat-OS di sini — "could not copy Chrome cookie database"
+# sendirian TIDAK dianggap sementara: itu juga pesan App-Bound Encryption yang
+# permanen, dan retry cuma membuang waktu sebelum jatuh ke cookies.txt.
+_TRANSIENT_LOCK_HINTS = (
+    "permission denied", "errno 13", "access is denied",
+    "being used by another process", "unable to read", "cannot read",
+)
+
+
+def _is_transient_cookie_lock(exc: BaseException) -> bool:
+    txt = _chain_text(exc).lower()
+    return any(h in txt for h in _TRANSIENT_LOCK_HINTS)
+
+
+# Pesan yt-dlp saat FORMAT yang diminta tidak ada di platform itu.
+_FORMAT_ERROR_HINTS = (
+    "requested format is not available", "no video formats found",
+    "no formats found", "requested format not available",
+)
+
+
+def _is_format_error(exc: BaseException) -> bool:
+    txt = _chain_text(exc).lower()
+    return any(h in txt for h in _FORMAT_ERROR_HINTS)
+
+
+_no_js_warned = False
+
+
+def _warn_if_no_js_runtime() -> None:
+    """Sekali per proses: peringatkan kalau runtime JS yang DIKONFIGURASI tidak
+    ada di PATH. Tanpa runtime, YouTube 'Made for Kids' gagal dengan
+    'This video is not available' — pesan yang sama sekali tidak menyebut JS.
+    """
+    global _no_js_warned
+    if _no_js_warned:
+        return
+    _no_js_warned = True
+    import shutil
+    names = [n.strip() for n in (config.JS_RUNTIMES or "").split(",") if n.strip()]
+    if not names:
+        return
+    found = [n for n in names if shutil.which(n)]
+    if not found:
+        print(
+            "[yt-dlp] PERINGATAN: runtime JS tidak ditemukan di PATH "
+            f"(dicari: {', '.join(names)}). Video YouTube 'Made for Kids' / "
+            "YouTube Kids akan GAGAL dengan 'This video is not available'. "
+            "Perbaiki: winget install DenoLand.Deno (buka terminal baru), "
+            "atau isi JS_RUNTIME_PATH di .env.",
+            flush=True)
+
+
+_cookie_warned = False
+
+
+def _warn_cookies_broken() -> None:
+    global _cookie_warned
+    if _cookie_warned or not config.COOKIE_WARN:
+        return
+    _cookie_warned = True
+    print(
+        f"[yt-dlp] Cookie browser ({config.COOKIES_FROM_BROWSER}) tidak bisa dibaca — "
+        "dilanjutkan TANPA cookie (video publik tetap jalan). Di Windows ini biasanya "
+        "karena Chrome sedang terbuka & mengunci Cookies.sqlite. Solusi permanen: "
+        "ekspor cookies.txt ke root project, atau tutup Chrome sebelum menjalankan. "
+        "Sekarang video yang butuh login akan gagal dengan pesan 'This video is not available'.",
+        flush=True)
+
+
+def _try_extract(opts: dict, url: str, download: bool) -> dict:
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        return ydl.extract_info(url, download=download)
+
+
 def _extract(opts: dict, url: str, download: bool = False) -> dict:
-    """extract_info dengan fallback otomatis kalau cookie-dari-browser gagal
-    dibaca — pesan yt-dlp bervariasi tergantung sebab (Chrome App-Bound
-    Encryption di versi baru, Chrome sedang terbuka & mengunci Cookies.sqlite
-    di Windows/issue #7271, browser tak terpasang, keyring tak tersedia, dst)
-    tapi SELALU menyebut "cookie" di pesannya.
-    Fallback bertingkat, BUKAN langsung lompat ke tanpa-cookie sama sekali:
-    browser gagal -> coba cookies.txt kalau file itu ada -> baru tanpa cookie.
-    Video yang butuh login (age-restricted dsb) tetap bisa lolos lewat
-    cookies.txt walau browser-nya diblokir Chrome; video publik tetap jalan
-    walau kedua cookie tak tersedia."""
+    """extract_info dengan fallback cookie BERTINGKAT + anti-pesan-menyesatkan.
+
+    Urutan: cookiesfrombrowser (dengan retry kalau file-nya sekadar terkunci)
+    -> cookies.txt -> tanpa cookie. Video publik tetap jalan tanpa cookie;
+    video yang butuh login tetap bisa lolos lewat cookies.txt walau Chrome
+    memblokir pembacaan langsungnya.
+
+    Kebetulan penting: kegagalan cookie sering TIDAK terlihat di pesan akhir
+    (berubah jadi 'This video is not available'), jadi deteksinya menelusuri
+    rantai exception — lihat ``_is_cookie_failure``."""
     global _cookies_broken
+    _warn_if_no_js_runtime()
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=download)
+        return _try_extract(opts, url, download)
     except yt_dlp.utils.DownloadError as e:
-        msg = str(e).lower()
         has_cookie_opt = bool(opts.get("cookiesfrombrowser") or opts.get("cookiefile"))
-        if has_cookie_opt and "cookie" in msg:
-            _cookies_broken = True
-            base_opts = {k: v for k, v in opts.items()
-                        if k not in ("cookiesfrombrowser", "cookiefile")}
-            # cadangan 1: cookies.txt, HANYA kalau bukan itu yang baru gagal
-            cf = _cookiefile_path()
-            if opts.get("cookiesfrombrowser") and cf.exists():
+        if not (has_cookie_opt and _is_cookie_failure(e)):
+            raise
+
+        # 0) lock sesaat (Chrome baru ditutup / handle belum dilepas) -> retry
+        if opts.get("cookiesfrombrowser") and _is_transient_cookie_lock(e):
+            for attempt in range(1, config.COOKIE_RETRY + 1):
+                time.sleep(config.COOKIE_RETRY_DELAY * attempt)
                 try:
-                    with yt_dlp.YoutubeDL({**base_opts, "cookiefile": str(cf)}) as ydl:
-                        return ydl.extract_info(url, download=download)
-                except yt_dlp.utils.DownloadError:
-                    pass  # cookies.txt juga gagal/kedaluwarsa -> lanjut cadangan 2
-            # cadangan 2: tanpa cookie sama sekali (video publik tetap jalan)
-            with yt_dlp.YoutubeDL(base_opts) as ydl:
-                return ydl.extract_info(url, download=download)
-        raise
+                    return _try_extract(opts, url, download)
+                except yt_dlp.utils.DownloadError as e2:
+                    e = e2
+                    if not _is_cookie_failure(e2):
+                        raise  # bukan soal cookie lagi (mis. video memang mati)
+
+        _cookies_broken = True
+        _warn_cookies_broken()
+        base_opts = {k: v for k, v in opts.items()
+                     if k not in ("cookiesfrombrowser", "cookiefile")}
+        # cadangan 1: cookies.txt, HANYA kalau bukan itu yang baru gagal
+        cf = _cookiefile_path()
+        if opts.get("cookiesfrombrowser") and cf.exists():
+            try:
+                return _try_extract({**base_opts, "cookiefile": str(cf)}, url, download)
+            except yt_dlp.utils.DownloadError:
+                pass  # cookies.txt juga gagal/kedaluwarsa -> lanjut cadangan 2
+        # cadangan 2: tanpa cookie sama sekali (video publik tetap jalan)
+        return _try_extract(base_opts, url, download)
 
 
 _MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
@@ -132,15 +318,38 @@ def cached_media(out_base) -> Path | None:
 
 def normalize_url(url: str) -> str:
     """Normalisasi URL antar-platform agar ekstraktor yt-dlp tepat.
-    YouTube Kids -> YouTube biasa (video ID sama, ekstraktor utama lebih andal)."""
+
+    YouTube Kids -> YouTube biasa: video ID-nya SAMA, dan ekstraktor utama
+    (youtube) jauh lebih andal daripada youtube:kids. Versi lama hanya
+    mengenali bentuk ``/watch?v=…``; ternyata link yang dibagikan dari app
+    Kids bisa berbentuk lain (``youtubekids.com/?v=ID``, parameter tambahan,
+    ``hl``/``list`` di depan, dsb) — kalau tidak dikenali, yt-dlp memakai
+    ekstraktor Kids yang mengembalikan hasil berbeda/kosong. Sekarang video ID
+    dicari di seluruh query, dari bentuk URL mana pun.
+    """
     import re
-    m = re.match(r"^(https?://)(?:www\.|m\.)?(?:youtubekids|kids\.youtube)\.com/watch\?(.+)$",
-                 (url or "").strip(), re.I)
+    u = (url or "").strip()
+    if not u:
+        return u
+    try:
+        p = urlsplit(u)
+    except ValueError:
+        return u
+    host = (p.hostname or "").lower()
+    is_kids = host in ("youtubekids.com", "kids.youtube.com") or host.endswith(
+        (".youtubekids.com", ".kids.youtube.com"))
+    if not is_kids:
+        return u
+    q = parse_qs(p.query)
+    for key in ("v", "video_id", "vid"):
+        val = (q.get(key) or [""])[0]
+        if re.fullmatch(r"[\w-]{6,}", val or ""):
+            return f"https://www.youtube.com/watch?v={val}"
+    # bentuk tanpa query v= (mis. /watch/ID atau /<ID> pada link lama)
+    m = re.search(r"(?<![\w-])([\w-]{11})(?![\w-])", p.path or "")
     if m:
-        vm = re.search(r"(?:^|[?&])v=([\w-]{6,})", m.group(2))
-        if vm:
-            return f"{m.group(1)}www.youtube.com/watch?v={vm.group(1)}"
-    return url
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    return u
 
 
 def _youtube_profile_videos_url(url: str) -> str:
@@ -201,6 +410,7 @@ def get_info(url: str) -> dict:
         "skip_download": True,
         "noplaylist": True,
         **_cookie_opts(),
+        **_js_opts(),
     }
     info = _extract(opts, url, download=False)
     return {
@@ -223,6 +433,7 @@ def resolve_url(url: str, max_entries=None):
         "extract_flat": "in_playlist",  # channel/profile -> daftar entri ringan
         "playlistend": int(max_entries or config.CHANNEL_MAX_CANDIDATES),
         **_cookie_opts(),
+        **_js_opts(),
     }
     info = _extract(opts, url, download=False)
     if info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
@@ -304,7 +515,13 @@ def download(url: str, out_base, time_range=None, on_progress=None) -> str:
         "no_warnings": True,
         "noprogress": True,
         "concurrent_fragment_downloads": 4,
+        # Ketahanan jaringan lintas platform (server CDN TikTok/IG/X sering
+        # memutus sambungan): retry + timeout eksplisit, bukan default urllib.
+        "retries": 3,
+        "fragment_retries": 5,
+        "socket_timeout": 30,
         **_cookie_opts(),
+        **_js_opts(),
     }
     if time_range:
         from yt_dlp.utils import download_range_func
@@ -327,15 +544,30 @@ def download(url: str, out_base, time_range=None, on_progress=None) -> str:
             except Exception:
                 pass
         opts["progress_hooks"] = [_hook]
-    info = _extract(opts, url, download=True)
+    # Tangga format: YouTube punya stream terpisah, banyak platform lain
+    # (TikTok/IG/X/FB) hanya menyediakan SATU stream gabungan. Kalau tangga di
+    # atas tidak cocok, jangan matikan job — turun ke 'best' apa adanya.
+    ladder = [fmt] + ([f"bestvideo[height<={h}]+bestaudio/best[height<={h}]/best",
+                       "bestvideo+bestaudio/best", "best"] if not time_range else [])
+    info = None
+    for i, f in enumerate(ladder):
+        try:
+            info = _extract({**opts, "format": f}, url, download=True)
+            break
+        except yt_dlp.utils.DownloadError as e:
+            if i + 1 < len(ladder) and _is_format_error(e):
+                print(f"[yt-dlp] format '{f}' tidak tersedia untuk URL ini "
+                      f"({str(e)[:120]}) — mencoba '{ladder[i + 1]}'…", flush=True)
+                continue
+            raise
     try:
         return info["requested_downloads"][0]["filepath"]
     except (KeyError, IndexError, TypeError):
         # fallback: cari file dengan prefix out_base
         for c in sorted(glob.glob(str(out_base) + ".*"), key=len):
             if c.endswith((".mp4", ".mkv", ".webm")):
-                    return c
-            raise RuntimeError("Download selesai tapi file video tidak ditemukan.")
+                return c
+        raise RuntimeError("Download selesai tapi file video tidak ditemukan.")
 
 def get_info_local(path) -> dict:
     """Info video dari FILE LOKAL (mode upload / file di disk) — tanpa internet."""
@@ -369,6 +601,7 @@ def download_frames_proxy(url: str, out_base) -> str:
         "noplaylist": True,
         "quiet": True, "no_warnings": True, "noprogress": True,
         **_cookie_opts(),
+        **_js_opts(),
     }
     info = _extract(opts, url, download=True)
     try:
@@ -389,6 +622,7 @@ def download_audio(url: str, out_base) -> str:
         "noplaylist": True,
         "quiet": True, "no_warnings": True, "noprogress": True,
         **_cookie_opts(),
+        **_js_opts(),
     }
     info = _extract(opts, url, download=True)
     try:
