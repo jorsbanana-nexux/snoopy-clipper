@@ -302,12 +302,25 @@ def _run(job_id):
         traceback.print_exc()
         msg = f"Gagal: {e}"
         s = str(e).lower()
-        if ("sign in" in s or "login required" in s or "cookies" in s
-                or "not available" in s or "age" in s):
-            # Video anak (made for kids), region-terkunci, atau bot-check YouTube
-            # butuh cookie login — arahkan user ke solusinya, bukan error mentah.
-            msg += (" — beberapa video (mis. konten anak/terkunci) butuh login: "
-                    "isi COOKIES_FROM_BROWSER=chrome di file .env")
+        # Pesan bantuan harus TEPAT: sejak yt-dlp 2025+ keluhan "This video is
+        # not available" pada video anak hampir selalu soal challenge JS yang
+        # belum dipecahkan (butuh runtime deno/node), BUKAN soal cookie.
+        # Menyarankan cookie untuk kasus itu cuma bikin user berputar-putar.
+        if "cookie" in s or "sign in" in s or "login required" in s or "not a bot" in s:
+            msg += (" — butuh cookie login. Cara paling stabil: ekspor cookies.txt "
+                    "(ekstensi \"Get cookies.txt LOCALLY\" saat login youtube.com), "
+                    "taruh di root project, lalu restart. Di Windows jangan andalkan "
+                    "Chrome: kalau Chrome sedang terbuka, Cookies.sqlite terkunci dan "
+                    "gagal disalin.")
+        elif "not available" in s or "unavailable" in s or "no formats" in s:
+            msg += (" — untuk YouTube ini paling sering karena challenge JS belum "
+                    "dipecahkan (khas video \"Made for Kids\" / YouTube Kids): pasang "
+                    "runtime JS (mis. `winget install DenoLand.Deno` di Windows), "
+                    "lalu pastikan JS_RUNTIMES=deno di .env, dan perbarui yt-dlp "
+                    "(`pip install -U \"yt-dlp[default]\"`) supaya skrip yt-dlp-ejs ikut.")
+        elif "age" in s:
+            msg += (" — video terbatas umur butuh login: taruh cookies.txt di root project "
+                    "lalu restart server.")
         _update(job_id, status="error", message=msg, error=str(e))
         _log_event("error", job_id, error=str(e)[:200])
 
