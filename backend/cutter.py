@@ -455,7 +455,11 @@ def concat_clips(paths, out_path):
     identik (codec/timebase sama) — murah, tanpa encode ulang."""
     out_path = os.path.abspath(out_path)
     lst = out_path + ".txt"
-    with open(lst, "w") as fh:
+    # encoding eksplisit: di Windows `open()` memakai cp1252 sehingga path
+    # ber-non-ASCII (nama folder berkunci, emoji di metadata) memunculkan
+    # UnicodeEncodeError dan membatalkan render. ffmpeg membaca daftar ini
+    # sebagai UTF-8.
+    with open(lst, "w", encoding="utf-8") as fh:
         for p in paths:
             fh.write("file '" + os.path.abspath(str(p)) + "'\n")
     try:

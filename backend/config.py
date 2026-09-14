@@ -18,13 +18,42 @@ for d in (DOWNLOADS_DIR, LIBRARY_DIR, JOBS_DIR, MODELS_DIR, LOGS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 
+def _read_env_text(path: Path) -> str:
+    """Baca .env TANPA pernah mematikan aplikasi karena masalah encoding.
+
+    Dulu dipakai ``path.read_text()`` yang memakai encoding LOKAL — di Windows
+    itu cp1252. Satu karakter non-ASCII saja di .env (emoji, em-dash, tanda
+    kutip pintar hasil salin-tempel) memunculkan ``UnicodeDecodeError`` saat
+    IMPORT config. Karena ini terjadi di import, SELURUH server gagal start —
+    bukan job yang error, tapi aplikasi mati total dan browser menampilkan
+    "localhost refused to connect". Persis kejadian nyata 2026-09-14:
+    emoji ``⚠️`` = byte ``e2 9a a0 ef b8 8f``; byte ``0x8f`` tidak ada di
+    cp1252 sehingga decode gagal di posisi 5833.
+
+    Sekarang isi berkas dibaca sebagai BYTE dulu, lalu dicoba berurutan:
+    UTF-8 (termasuk BOM dari Notepad) -> cp1252 -> latin-1. latin-1 tidak
+    pernah gagal untuk byte apa pun, jadi fungsi ini selalu mengembalikan teks.
+    """
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("latin-1", errors="replace")
+
+
 def _load_env():
     """Loader .env super ringan (tanpa dependency tambahan).
     Paham komentar inline (`KEY=val  # catatan`) dan nilai berkutip."""
     env_file = BASE_DIR / ".env"
     if not env_file.exists():
         return
-    for line in env_file.read_text().splitlines():
+    try:
+        text = _read_env_text(env_file)
+    except OSError:
+        return  # .env tak terbaca (izin/disk) -> pakai default, jangan matikan app
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
