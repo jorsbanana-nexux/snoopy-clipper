@@ -42,6 +42,8 @@ _TRANS_MS = 120          # crossfade perpindahan single<->duo
 _MIN_SEG_SEC = 0.4       # anti-flicker: layout tak gonta-ganti lebih rapat dari ini
 _DUO_Y_TOP = 0.25        # tengah belahan atas
 _DUO_Y_BOT = 0.75        # tengah belahan bawah
+_DUO_DIM = 0x60          # alpha belahan non-aktif (spotlight): cukup redup
+                         # tapi tetap terbaca — pembicara aktif yang MENYOROT
 
 
 def _fmt(t: float) -> str:
@@ -75,6 +77,40 @@ def _apply_case(text: str) -> str:
     if config.SUBTITLE_CASE == "normal":
         return text
     return " ".join(w.capitalize() for w in text.split())
+
+
+def _norm_zones(duo_zones) -> dict:
+    """duo_zones dari otak: {"atas": label, "bawah": label} — sudah
+    divalidasi brain, renderer tetap defensif (jangan pernah percaya input)."""
+    if not isinstance(duo_zones, dict):
+        return {}
+    a = str(duo_zones.get("atas", "") or "").strip()[:24]
+    b = str(duo_zones.get("bawah", "") or "").strip()[:24]
+    return {"atas": a, "bawah": b} if (a and b and a.upper() != b.upper()) else {}
+
+
+def _active_zone(chunk: list, zones: dict):
+    """Zona pembicara AKTIF utk frasa ini (SPOTLIGHT): mayoritas kata frasa
+    ini diucapkan pembicara zona mana. Pembicara tak dikenal / tanpa label
+    -> None (dua belahan sama terang — perilaku lama, aman).
+    Adegan ramai (banyak orang bicara bertukar/berbarengan/ketawa bareng):
+    sorotan mengikuti pembicara dominan tiap frasa -> bergantian mulus,
+    bukan kaku diam; selesai ramai -> balik single seperti sedia kala."""
+    if not zones:
+        return None
+    votes = {}
+    for w in chunk:
+        sp = str(w.get("speaker") or "").strip()
+        if sp:
+            votes[sp] = votes.get(sp, 0) + 1
+    if not votes:
+        return None
+    sp = max(votes.items(), key=lambda kv: kv[1])[0]
+    if sp == zones["atas"]:
+        return "atas"
+    if sp == zones["bawah"]:
+        return "bawah"
+    return None
 
 
 def _y_at(focus_y, t: float):
@@ -142,13 +178,17 @@ def _layout_segments(clip_dur: float, layout, layout_events):
             for i in range(len(pts))]
 
 
-def _parts(chunk: list, clip_start: float, ev_start: float) -> str:
+def _parts(chunk: list, clip_start: float, ev_start: float, dim: bool = False) -> str:
     """Override block per kata (karaoke + pop) — waktu relatif EVENT (syarat \\t).
     PRESISI: ms penuh tanpa pembulatan; micro-lead 25ms; bounce tuntas
-    sebelum kata berikutnya mulai."""
+    sebelum kata berikutnya mulai.
+    dim=True (SPOTLIGHT duo): belahan zona pembicara NON-aktif meredup —
+    pop-in tiap kata berakhir di alpha redup (bukan terang penuh), jadi
+    zona aktif "menyorot" & perpindahan sorotan antar belahan mulus."""
     hl_ms = max(10, config.KARAOKE_FADE_MS)
     pop = config.SUBTITLE_POP * 100
     ms = config.SUBTITLE_POP_MS
+    vis = "&H%02X&" % _DUO_DIM if dim else "&H00&"
     parts = []
     for i, w in enumerate(chunk):
         wr = max(0.0, w["start"] - clip_start - ev_start)
@@ -164,7 +204,7 @@ def _parts(chunk: list, clip_start: float, ev_start: float) -> str:
                 settle_end = min(settle_end, nxt)
         parts.append(
             "{\\alpha&HFF&"
-            f"\\t({fade},{fade + 45},\\alpha&H00&)"      # pop-in lebih halus (45ms)
+            f"\\t({fade},{fade + 45},\\alpha{vis})"         # pop-in lebih halus (45ms)
             f"\\fscx100\\fscy100\\c&HFFFFFF&"
             f"\\t({fade},{fade + ms},\\fscx{pop:.0f}\\fscy{pop:.0f})"
             f"\\t({fade + ms},{settle_end},\\fscx100\\fscy100)"
@@ -179,11 +219,19 @@ def _parts(chunk: list, clip_start: float, ev_start: float) -> str:
 
 def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
               clip_start: float, clip_end: float,
-              layout=None, layout_events=None) -> str:
+              layout=None, layout_events=None, duo_zones=None) -> str:
     """Bangun file ASS lengkap untuk satu klip (waktu relatif terhadap klip).
     vision = data dari facetrack.track() untuk smart placement (boleh None).
     layout/layout_events = deteksi SPLIT LAYER dari otak (boleh kosong/None
-    -> perilaku identik v3, frame normal tak tersentuh)."""
+    -> perilaku identik v3, frame normal tak tersentuh).
+    duo_zones = SPOTLIGHT: peta label pembicara -> zona atas/bawah dari otak
+    (boleh None/kosong -> duo klasik: dua belahan sama terang). Kalau ada,
+    belahan zona pembicara AKTIF terang penuh & zona satunya meredup —
+    bergantian MULUS mengikuti siapa yang bicara (adegan ramai/chaotic),
+    tak kaku; unknown speaker -> dua-duanya terang (fallback aman)."""
+    zones = (_norm_zones(duo_zones)
+             if (config.SUBTITLE_SPLIT_LAYER and config.SUBTITLE_DUO_SPOTLIGHT)
+             else {})
     fs_base = int(height * config.SUBTITLE_SIZE_FRAC)
     ol = max(4, int(fs_base * 0.045))
     events = []
@@ -221,11 +269,21 @@ def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
             if i1 - i0 < 0.05:
                 continue
             if lay == "duo":
-                # teks SAMA persis di tengah kedua belahan (sinkron, dobel)
-                positions = [(width // 2, int(height * _DUO_Y_TOP)),
-                            (width // 2, int(height * _DUO_Y_BOT))]
+                # teks SAMA persis di tengah kedua belahan (sinkron, dobel).
+                # SPOTLIGHT: zona pembicara aktif TERANG PENUH, zona satunya
+                # meredup — bergantian mulus mengikuti ucapan (adegan ramai:
+                # 10 orang ribut/ketawa bareng -> sorotan pindah2 mulus ke
+                # pembicara dominan tiap frasa, bukan kaku diam di satu tempat)
+                az = _active_zone(chunk, zones)
+                top_dim = bot_dim = False
+                if az == "atas":
+                    bot_dim = True
+                elif az == "bawah":
+                    top_dim = True
+                positions = [(width // 2, int(height * _DUO_Y_TOP), top_dim),
+                            (width // 2, int(height * _DUO_Y_BOT), bot_dim)]
             else:
-                positions = [(x, y)]
+                positions = [(x, y, False)]
             # transisi mulus: crossfade pendek di perbatasan single<->duo
             fin = _TRANS_MS if (s0 > 0 and i0 - s0 < 0.05) else 0
             fo = (_TRANS_MS if (s1 < clip_dur and s1 - i1 < 0.05)
@@ -235,8 +293,9 @@ def build_ass(words: list, focus_y: list, vision: dict, width: int, height: int,
             fin = max(0, min(fin, dur_ms))
             # ---- FADE-OUT SATISFYING: frasa menutup memudar + blur halus ----
             blur_a, blur_b = max(0, dur_ms - fo), dur_ms
-            parts = _parts(chunk, clip_start, i0)
-            for (px, py) in positions:
+            for (px, py, dim) in positions:
+                # belahan redup butuh parts versi redup (alpha pop-in beda)
+                parts = _parts(chunk, clip_start, i0, dim=bool(dim))
                 events.append(
                     "Dialogue: 0,%s,%s,Snoop,,0,0,0,,"
                     "{\\an5\\pos(%d,%d)\\fs%d\\bord%d\\fad(%d,%d)\\t(%d,%d,\\blur2.6)}%s"

@@ -451,6 +451,11 @@ def _brain(job_id, transcript, duration, frames) -> list:
     moments = brain.find_moments(transcript, duration, frames_dir, frame_interval, meta=meta)
     if not moments:
         raise RuntimeError("AI tidak menemukan momen yang layak jadi klip. Coba video lain.")
+    # GERBANG SPLIT LAYER: video anak / klip "anak" TIDAK PERNAH split —
+    # apapun kata otak (pertahanan kedua; otak sudah menggate sendiri)
+    for m in moments:
+        if meta["is_kids"] or str(m.get("content_type", "")).lower() == "anak":
+            m["layout"], m["layout_events"], m["duo_zones"] = "single", [], {}
     _update(job_id, pct=50, message=f"{len(moments)} momen terpilih — mulai render "
             f"(otak {int(time.time() - t0)} dtk)")
     return moments
@@ -542,7 +547,8 @@ def _render_absolute(job_id, info, moments, video_path, full_words):
             ass_file.write_text(
                 subtitles.build_ass(words, focus_y, vision, tw, th, start, end,
                                     layout=m.get("layout"),
-                                    layout_events=m.get("layout_events")),
+                                    layout_events=m.get("layout_events"),
+                                    duo_zones=m.get("duo_zones")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()
@@ -676,7 +682,8 @@ def _render_ranged(job_id, info, moments, full_words):
             ass_file.write_text(
                 subtitles.build_ass(words, focus_y, vision, tw, th, 0.0, seg_dur,
                                     layout=m.get("layout"),
-                                    layout_events=m.get("layout_events")),
+                                    layout_events=m.get("layout_events"),
+                                    duo_zones=m.get("duo_zones")),
                 encoding="utf-8")
             out_path = vdir / f"{clip_id}.mp4"
             t0 = time.time()  # untuk kalibrasi drift klip berikutnya
@@ -797,6 +804,7 @@ def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
         "bgm": bgm_credit, "loop": bool(m.get("loop", False)),
         "loop_note": str(m.get("loop_note", ""))[:160],
         "layout": str(m.get("layout", "single"))[:8],
+        "duo_zones": m.get("duo_zones") or {},
         "start": m["start"], "end": m["end"],
         "duration": round(m["end"] - m["start"], 1),
         "width": tw, "height": th,
@@ -878,7 +886,8 @@ def _render_klip(video_path, start, end, words, keyframes, focus_y, vision,
             sub_ass = workdir / f"{stem}_da{j}.ass"
             sub_ass.write_text(subtitles.build_ass(
                 words, focus_y, vision, tw, th, ss, se,
-                layout=m.get("layout"), layout_events=m.get("layout_events")),
+                layout=m.get("layout"), layout_events=m.get("layout_events"),
+                duo_zones=m.get("duo_zones")),
                 encoding="utf-8")
             sub_out = workdir / f"{stem}_da{j}.mp4"
             cutter.render_clip(

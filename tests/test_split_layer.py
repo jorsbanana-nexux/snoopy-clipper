@@ -85,12 +85,16 @@ def test_anti_flicker_dan_validasi_events():
     assert "\\pos(540,480)" not in ass
 
 
-def test_prompt_direktur_duo_tegas_dan_multi_orang():
-    """Spec owner 2026-09-12: duo WAJIB saat dua zona sama-sama penting
-    (podcast/gameplay dsb), tiap zona boleh BANYAK orang; ragu -> single."""
+def test_prompt_direktur_selektif_anak_tanpa_split():
+    """Spec owner 2026-09-14: direktur SELEKTIF, bukan agresif — bias lama
+    'duo WAJIB' bikin split muncul di semua video (bodoh). Sekarang: duo
+    HANYA utk frame benar-benar terbelah dua zona, video anak TIDAK PERNAH
+    split, tiap zona boleh BANYAK orang, ragu -> single."""
     dp = brain._D_PROMPT
-    assert "duo WAJIB" in dp
-    assert "BANYAK orang" in dp
+    assert "duo WAJIB" not in dp          # bias agresif dihapus
+    assert "TIDAK PERNAH split" in dp      # gate konten anak
+    assert "BANYAK orang" in dp            # zona boleh ramai
+    assert "ragu -> \"single\"" in dp or 'ragu -> "single"' in dp
 
 
 def test_prompt_dan_validate_otak(monkeypatch):

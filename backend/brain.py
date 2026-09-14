@@ -68,12 +68,14 @@ ATURAN KETAT momen:
 
 14. THUMBNAIL PODCAST: setiap klip WAJIB punya "content_type" — jenis konten KLIP INI (bukan video aslinya), pilih HANYA dari: podcast | interview | gaming | storytime | edukasi | vlog | berita | anak | lainnya. PUNYA JUGA "topic_tag" — SATU tag yang PALING NYAMBUNG dengan isi spesifik momen ini (dipakai utk emoji topik di thumbnail, harus akurat), pilih HANYA dari: finance | ekonomi | crypto | investasi | love | fitness | food | tech | gaming | music | travel | edukasi | science | health | sports | drama | motivation | crime | family | cars | nature | business | career | history | berita | politik | spiritual | comedy | psychology | movie | book | ai | law | warning | celebrity. Kalau TIDAK ADA yang benar-benar nyambung dengan topik momen ini, isi "" — JANGAN paksa asal (emoji ngaco = thumbnail jelek).
 
-12. SPLIT LAYER (layout): set "layout": "duo" HANYA kalau frame pada rentang klip BENAR-BENAR terbelah dua zona ATAS-BAWAH — contoh: wajah/pembicara di atas + gameplay/demo/presentasi di bawah, podcast dengan layar terbelah, atau pembicara yang sedang menunjukkan sesuatu di zona berseberangan — yaitu kondisi di mana subtitle satu tempat akan menutupi salah satu zona. Gunakan "single" (default) untuk SEMUA tampilan normal. Kalau kondisi terbelah hanya terjadi SEBAGIAN klip, set layout keseluruhan klip lalu tambah "layout_events": [{{"t": detik-relatif-dari-start-klip, "layout": "single"|"duo"}}] tepat di titik perubahannya (t dalam detik RELATIF dari start klip, bukan timestamp video). JANGAN pakai duo kalau ragu — salah posisi lebih merusak daripada posisi normal.
+15. SPLIT LAYER (layout) — SELEKTIF & TIDAK KAKU, TAPI JANGAN DIPAKSA KE SEMUA VIDEO: "layout": "duo" HANYA kalau frame pada rentang klip BENAR-BENAR terbelah dua zona ATAS-BAWAH — contoh: wajah/pembicara di atas + gameplay/demo/presentasi di bawah, podcast dengan layar terbelah, atau pembicara yang menunjukkan sesuatu di zona berseberangan — yaitu kondisi di mana subtitle satu tempat akan menutupi salah satu zona yang sama-sama penting. "single" (default) untuk SEMUA tampilan normal, WAJIB untuk: video anak (content_type "anak" — TIDAK PERNAH split), talking head satu orang, gameplay fullscreen tanpa webcam, vlog satu kamera, konten kartun/penuh layar. JANGAN pakai duo kalau ragu — salah posisi lebih merusak daripada posisi normal, dan video mayoritas di dunia TIDAK butuh split.
+Kalau terbelah hanya SEBAGIAN klip: set layout sesuai kondisi dominan lalu tambah "layout_events": [{{"t": detik-relatif-dari-start-klip, "layout": "single"|"duo"}}] tepat di titik perubahannya (t dalam detik RELATIF dari start klip, bukan timestamp video) — dan WAJIB kembali "single" begitu kondisi terbelahnya selesai (frame normal kembali = subtitle normal kembali, jangan bertahan duo sampai akhir).
+Kalau klip duo punya LEBI DARI SATU pembicara yang BERTUKAR/BERGANTIAN bicara (ramai, debat, saling potong, ketawa bareng — chaotic): isi "duo_zones": {{"atas": "<label pembicara persis dari transkrip yang berada/dominan di zona ATAS>", "bawah": "<label pembicara di zona BAWAH>"}} — subtitle lalu menyorot zona pembicara AKTIF secara bergantian dan mulus (zona aktif terang penuh, zona diam meredup), lalu normal kembali. Kalau transkrip tidak punya label pembicara atau kamu ragu mapping-nya: "duo_zones": {{}}.
 
-13. STANDAR AKHIR — UJI DIRI SEBELUM KAWAL: untuk TIAP kandidat tanyakan: "kalau penonton acak melihat detik 1-3 klip ini di beranda, apakah dia BERHENTI scroll?" Ragu-ragu = turunkan skor atau buang kandidat itu. Tiap klip wajib punya ARC MINI utuh yang berdiri sendiri: hook menarik -> isi yang MENAIKKAN tensi/emosi/nilai -> pay-off memuaskan tepat di akhir. Klip "berdaging tapi datar" (informasi ada tapi tak ada tensi/kejutan/emosi) = skor MAKSIMAL 6 dan JANGAN pernah masuk pilihan teratas. SEDIKIT tapi setiap klip menarik >> banyak tapi datar — pemilihan = KURASI, bukan pengambilan sebanyak-banyaknya.
+16. STANDAR AKHIR — UJI DIRI SEBELUM KAWAL: untuk TIAP kandidat tanyakan: "kalau penonton acak melihat detik 1-3 klip ini di beranda, apakah dia BERHENTI scroll?" Ragu-ragu = turunkan skor atau buang kandidat itu. Tiap klip wajib punya ARC MINI utuh yang berdiri sendiri: hook menarik -> isi yang MENAIKKAN tensi/emosi/nilai -> pay-off memuaskan tepat di akhir. Klip "berdaging tapi datar" (informasi ada tapi tak ada tensi/kejutan/emosi) = skor MAKSIMAL 6 dan JANGAN pernah masuk pilihan teratas. SEDIKIT tapi setiap klip menarik >> banyak tapi datar — pemilihan = KURASI, bukan pengambilan sebanyak-banyaknya.
 
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": []}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": [], "duo_zones": {{}}}}]}}"""
 
 
 def _today() -> str:
@@ -339,8 +341,14 @@ def find_moments(transcript: dict, duration: float,
         moments = _specialist_pass(moments, transcript, duration, frames,
                                    frame_interval)
     moments = _enforce_language(moments, transcript.get("language"))
-    return _validate(moments, transcript["words"], duration,
-                     lines=transcript.get("lines"))
+    moments = _validate(moments, transcript["words"], duration,
+                        lines=transcript.get("lines"))
+    if meta and meta.get("is_kids"):
+        # MODE ANAK: split layer TIDAK PERNAH untuk konten anak — apapun kata
+        # otaknya, semua klip kembali single (subtitle normal utuh)
+        for m in moments:
+            m["layout"], m["layout_events"], m["duo_zones"] = "single", [], {}
+    return moments
 
 
 def _extract_moments(raw) -> list:
@@ -516,9 +524,23 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
             "layout": ("duo" if str(m.get("layout", "single")).lower() == "duo"
                        else "single"),
             "layout_events": _layout_events(m.get("layout_events"), e - s),
+            "duo_zones": _duo_zones(m.get("duo_zones")),
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
     return out[: config.MAX_CLIPS]
+
+
+def _duo_zones(raw) -> dict:
+    """Validasi keras duo_zones dari otak: mapping label pembicara -> zona.
+    Hanya diterima kalau kedua label terisi, berbeda, & wajar (<=24 char);
+    selain itu -> {{}} (duo perilaku lama: dua belahan sama terang)."""
+    if not isinstance(raw, dict):
+        return {}
+    atas = str(raw.get("atas", raw.get("top", "")) or "").strip()[:24]
+    bawah = str(raw.get("bawah", raw.get("bottom", "")) or "").strip()[:24]
+    if atas and bawah and atas.upper() != bawah.upper():
+        return {"atas": atas, "bawah": bawah}
+    return {}
 
 
 def _layout_events(raw, dur: float) -> list:
@@ -615,7 +637,9 @@ def _transcript_text(transcript: dict, max_chars=24000) -> str:
     """Transkrip ringkas BERTIMESTAMP utk otak teks (verifikator/penulis)."""
     lines = transcript.get("lines") or []
     if lines:
-        segs = [f"[{l['start']:.1f}-{l['end']:.1f}] {l.get('text', '')}"
+        segs = [(f"[{l['start']:.1f}-{l['end']:.1f}] {l['speaker']}: {l.get('text', '')}"
+                 if l.get("speaker") else
+                 f"[{l['start']:.1f}-{l['end']:.1f}] {l.get('text', '')}")
                 for l in lines]
     else:
         segs = [f"[{w['start']:.1f}-{w['end']:.1f}] {w.get('text', '')}"
@@ -668,26 +692,34 @@ KANDIDAT:
 _D_PROMPT = """Kamu DIREKTUR VISUAL. Frame dikirim SETIAP ±{iv:.1f} detik dari awal
 video (frame i ≈ detik i×interval) dalam urutan waktu; rentang kandidat
 dalam detik absolut video. Untuk TIAP kandidat:
-1. "layout": "duo" kalau frame pada rentangnya terbelah dua zona ATAS-BAWAH
-   (wajah/pembicara di satu zona + gameplay/demo/presentasi/panel orang
-   lain di zona satunya) — termasuk podcast berdua/ramai yang layarnya
-   terbelah; TIAP zona boleh berisi BANYAK orang. Subtitle hanya punya
-   SATU tempat, jadi duo WAJIB dipakai saat dua zona sama-sama penting —
-   jangan tunda-tunda karena ragu-ragu halus. "single" hanya kalau frame
-   benar-benar SATU fokus utuh, atau kamu sungguh-sungguh ragu (salah
-   posisi lebih merusak daripada posisi normal).
+1. "layout": "duo" HANYA kalau frame pada rentangnya terbelah dua zona
+   ATAS-BAWAH (wajah/pembicara di satu zona + gameplay/demo/presentasi/
+   panel orang lain di zona satunya) — termasuk podcast berdua/ramai yang
+   layarnya terbelah; tiap zona boleh berisi BANYAK orang, asalkan dua
+   zona itu sama-sama penting. "single" untuk SEMUA lainnya — WAJIB untuk
+   klip dengan content_type "anak" (video anak TIDAK PERNAH split),
+   talking head satu orang, gameplay fullscreen tanpa webcam, vlog satu
+   kamera, kartun/penuh layar, dan setiap kondisi yang hanya punya SATU
+   zona penting. Kalau ragu -> "single": salah posisi lebih merusak
+   daripada posisi normal — video mayoritas memang TIDAK butuh split.
 2. "layout_events": kalau terbelah hanya sebagian rentang:
-   [{{"t": <detik RELATIF dari start klip>, "layout": "single"|"duo"}}]; utuh = [].
-3. "topic_tag": tag emoji topik thumbnail — HANYA dari: finance | ekonomi |
+   [{{"t": <detik RELATIF dari start klip>, "layout": "single"|"duo"}}];
+   utuh = []. WAJIB kembali "single" begitu frame normal kembali.
+3. "duo_zones": HANYA kalau layout duo dan transkrip punya LABEL pembicara
+   (mis. SPEAKER_00) yang bertukar/bergantian bicara antar dua zona:
+   {{"atas": "<label pembicara di zona atas>", "bawah": "<label pembicara di zona bawah>"}} —
+   subtitle lalu menyorot zona pembicara aktif secara bergantian dan mulus.
+   Kalau bukan duo, label tidak ada, atau ragu mapping-nya: {{}}.
+4. "topic_tag": tag emoji topik thumbnail — HANYA dari: finance | ekonomi |
    crypto | investasi | love | fitness | food | tech | gaming | music |
    travel | edukasi | science | health | sports | drama | motivation |
    crime | family | cars | nature | business | career | history | berita |
    politik | spiritual | comedy | psychology | movie | book | ai | law |
    warning | celebrity. Kalau TIDAK ADA yang benar-benar nyambung dengan
    isi momen ini, isi "" — JANGAN paksa asal (tag ngaco = emoji thumbnail ngaco).
-4. "bgm_mood": satu dari: comedy, upbeat, epic, tension, mystery, emotional,
+5. "bgm_mood": satu dari: comedy, upbeat, epic, tension, mystery, emotional,
    chill, action.
-Balas HANYA JSON: {{"directions": [{{"i": 0, "layout": "single", "layout_events": [], "topic_tag": "...", "bgm_mood": "chill"}}]}}
+Balas HANYA JSON: {{"directions": [{{"i": 0, "layout": "single", "layout_events": [], "duo_zones": {{}}, "topic_tag": "...", "bgm_mood": "chill"}}]}}
 
 KANDIDAT:
 {cand}"""
@@ -715,7 +747,8 @@ def _specialist_pass(moments: list, transcript: dict, duration: float,
     tr_text = _transcript_text(transcript)
     cand = json.dumps([{"i": i, "start": m.get("start"), "end": m.get("end"),
                         "title": m.get("title", ""), "hook": m.get("hook", ""),
-                        "score": m.get("score")}
+                        "score": m.get("score"),
+                        "content_type": m.get("content_type", "")}
                        for i, m in enumerate(moments)], ensure_ascii=False)
     with ThreadPoolExecutor(max_workers=3) as ex:
         fv = ex.submit(_ask_role, "verifikator",
@@ -765,8 +798,15 @@ def _specialist_pass(moments: list, transcript: dict, duration: float,
     for d in directions:
         i = _idx(d)
         if i is not None:
-            moments[i]["layout"] = str(d.get("layout", "single")).lower()[:8]
-            moments[i]["layout_events"] = d.get("layout_events") or []
+            lay = str(d.get("layout", "single")).lower()[:8]
+            # GERBANG ANAK: klip anak TIDAK PERNAH split — apapun kata direktur
+            # (topic_tag & bgm_mood tetap boleh lewat, itu urusan lain)
+            kids = str(moments[i].get("content_type", "")).lower() == "anak"
+            if kids:
+                lay = "single"
+            moments[i]["layout"] = "duo" if lay == "duo" else "single"
+            moments[i]["layout_events"] = [] if kids else (d.get("layout_events") or [])
+            moments[i]["duo_zones"] = {} if kids else (d.get("duo_zones") or {})
             if d.get("topic_tag"):
                 # hanya tag TERKENAL boleh menimpa — direktur pernah menimpa
                 # 'love' dgn kata bebas 'cinta' -> emoji topik hilang total
