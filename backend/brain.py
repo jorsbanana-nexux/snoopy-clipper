@@ -74,8 +74,10 @@ Kalau klip duo punya LEBI DARI SATU pembicara yang BERTUKAR/BERGANTIAN bicara (r
 
 16. STANDAR AKHIR — UJI DIRI SEBELUM KAWAL: untuk TIAP kandidat tanyakan: "kalau penonton acak melihat detik 1-3 klip ini di beranda, apakah dia BERHENTI scroll?" Ragu-ragu = turunkan skor atau buang kandidat itu. Tiap klip wajib punya ARC MINI utuh yang berdiri sendiri: hook menarik -> isi yang MENAIKKAN tensi/emosi/nilai -> pay-off memuaskan tepat di akhir. Klip "berdaging tapi datar" (informasi ada tapi tak ada tensi/kejutan/emosi) = skor MAKSIMAL 6 dan JANGAN pernah masuk pilihan teratas. SEDIKIT tapi setiap klip menarik >> banyak tapi datar — pemilihan = KURASI, bukan pengambilan sebanyak-banyaknya.
 
+17. OVERLAY 2-3 DETIK PERTAMA ("overlay_name"): NAMA ORANG/CHANNEL/GAME/TOPIK yang jadi FOKUS klip ini — dipakai sebagai teks besar overlay pembuka (2-3 detik pertama). WAJIB AKURAT: nama PERSIS seperti yang disebut di transkrip/judul/ditunjukkan di frame (contoh: nama narasumber "Budi", channel "Lex Fridman", game "Minecraft"). Format: NAMA SAJA 1-4 kata — BUKAN kalimat, BUKAN opini, tanpa embel-embel ("kaya", "gila", dsb = larangan). Kalau TIDAK ada nama yang pasti atau ragu sedikit saja -> isi "" (kosong; SALAH NAMA jauh lebih memalukan daripada tanpa nama — akurasi nomor satu).
+
 Balas HANYA JSON (tanpa teks lain):
-{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": [], "duo_zones": {{}}}}]}}"""
+{{"analysis": "...", "moments": [{{"start": 12.4, "end": 48.9, "title": "...", "hook": "...", "score": 9, "reason": "...", "trend": "...", "audience": "...", "bgm_mood": "comedy", "content_type": "podcast", "topic_tag": "", "loop": false, "loop_note": "", "layout": "single", "layout_events": [], "duo_zones": {{}}, "overlay_name": ""}}]}}"""
 
 
 def _today() -> str:
@@ -525,9 +527,19 @@ def _validate(moments: list, words: list, duration: float, lines: list = None) -
                        else "single"),
             "layout_events": _layout_events(m.get("layout_events"), e - s),
             "duo_zones": _duo_zones(m.get("duo_zones")),
+            "overlay_name": _overlay_name(m.get("overlay_name")),
         })
     out.sort(key=lambda m: -float(m.get("score") or 0))
     return out[: config.MAX_CLIPS]
+
+
+def _overlay_name(v) -> str:
+    """Sanitasi keras overlay_name (teks overlay 2-3 dtk pertama): NAMA saja
+    & AKURAT — max 4 kata / 28 char, buang tanda baca aneh. Bukan kalimat:
+    kalau sampah/kepanjangan -> dibuang total (fallback ke hook lama)."""
+    s = re.sub(r"[^\w\s&.'\-]", "", " ".join(str(v or "").split())).strip(" .-")
+    s = " ".join(s.split()[:4])[:28].strip()
+    return s if 1 <= len(s) <= 28 else ""
 
 
 def _duo_zones(raw) -> dict:

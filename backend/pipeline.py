@@ -798,6 +798,7 @@ def _bgm_track(job_id, m):
 def _clip_meta(clip_id, m, tw, th, info, bgm_credit="") -> dict:
     return {
         "id": clip_id, "title": m["title"], "hook": m.get("hook", ""),
+        "overlay_name": m.get("overlay_name", ""),
         "score": m.get("score", 0), "reason": m.get("reason", ""),
         "trend": m.get("trend", ""), "audience": m.get("audience", ""),
         "content_type": m.get("content_type", ""), "topic_tag": m.get("topic_tag", ""),
@@ -857,8 +858,11 @@ def _overlay_assets(tw, th, workdir, m, clip_id):
     try:
         if config.WATERMARK:
             wm_rel = _overlays.make_watermark(tw, th, workdir).name
-        if config.HOOK_OVERLAY and m.get("hook"):
-            p = _overlays.make_hook(m.get("hook", ""), tw, th,
+        # overlay pembuka: NAMA fokus klip dulu (owner 2026-09-14: nama saja,
+        # akurat, bukan kalimat panjang); kosong -> hook lama (fallback aman)
+        _hook_text = (m.get("overlay_name") or m.get("hook") or "").strip()
+        if config.HOOK_OVERLAY and _hook_text:
+            p = _overlays.make_hook(_hook_text, tw, th,
                                     Path(workdir) / f"{clip_id}_hook.png")
             if p:
                 hook_rel = p.name

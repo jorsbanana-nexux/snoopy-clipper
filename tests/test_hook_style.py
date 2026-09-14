@@ -1,8 +1,9 @@
-"""Kontrak hook overlay baru (permintaan owner 2026-09-11):
+"""Kontrak hook overlay (owner 2026-09-11, DIPERBARUI 2026-09-14):
 1. APNG ANIMASI fade subtitle: lead-in transparan -> fade-in -> hold ->
    fade-out + BLUR memudar (frame terakhir lenyap).
 2. Putih BERSIH tebal TANPA outline hitam — hanya shadow gelap banyak-lapis
-   radius jauh ala gradient (alpha maks 210, tidak solid pekat).
+   radius jauh ala gradient; intensitas DIKURANGI (owner 2026-09-14):
+   teks & shadow semi-transparan (alpha teks 205, shadow maks 145).
 3. Emoji topik: hanya tag TERKENAL yang boleh lolos / menimpa."""
 
 
@@ -18,11 +19,15 @@ def test_hook_adalah_apng_animasi_dengan_fade_dan_blur(tmp_path):
     assert len(frames) >= 15                      # lead+in+hold+out cukup halus
     assert frames[0].getextrema()[3][0] == 0     # frame pertama: transparan total
     assert frames[-1].getextrema()[3][0] == 0    # frame terakhir: lenyap total
-    # frame hold: teks putih terlihat
+    # frame hold: teks putih terlihat & SEMI-TRANSPARAN (owner 2026-09-14:
+    # intensitas dikurangi — alpha ~170-205, bukan solid 255 lagi)
     mid = frames[8]
-    white = sum(1 for px in mid.getdata() if px[3] > 200
+    white = sum(1 for px in mid.getdata() if px[3] > 140
                 and px[0] > 230 and px[1] > 230 and px[2] > 230)
     assert white > 100, "teks putih tebal harus terlihat"
+    solid = sum(1 for px in mid.getdata() if px[3] > 230
+                and px[0] > 230 and px[1] > 230 and px[2] > 230)
+    assert solid == 0, "teks hook TIDAK boleh solid penuh — semi-transparan"
     # frame fade-out akhir harus LEBIH BLUR: hitung piksel tajam tersisa
     assert frames[-2].getextrema()[3][0] < 60    # sudah nyaris lenyap saat blur
 
@@ -74,3 +79,72 @@ def test_direktur_prompt_memakai_daftar_tetap():
     src = inspect.getsource(brain)
     assert '"topic_tag": tag emoji topik thumbnail' in src
     assert "JANGAN paksa asal" in src
+
+
+# ---------------- owner 2026-09-14: overlay NAMA + semi-transparan ----------------
+
+def test_intensitas_hook_dikurangi():
+    """Teks hook semi-transparan (205, bukan 247/255) & shadow maks 145
+    (dulu 210) — 'transparan transparan keren'."""
+    from backend import overlays
+    assert overlays._HOOK_TEXT_A == 205
+    assert max(a for _, a in overlays._HOOK_SHADOW) <= 145
+
+
+def test_thumbnail_teks_sedikit_transparan():
+    from backend import thumbnail
+    assert thumbnail._TEXT_ALPHA == 225   # < 255 = sedikit transparan, keren
+
+
+def test_brain_overlay_name_sanitasi():
+    from backend import brain
+    f = brain._overlay_name
+    assert f("Budi") == "Budi"
+    assert f("  Lex Fridman ") == "Lex Fridman"
+    assert f("Minecraft") == "Minecraft"
+    # bukan kalimat / embel-embel / tanda aneh dibersihkan keras
+    assert f("kenapa dia cepat kaya banget sekali ya") == "kenapa dia cepat kaya"
+    assert f("BUDI GILA!!!") == "BUDI GILA"
+    assert f("") == "" and f(None) == "" and f("!!!") == ""
+    assert len(f("a" * 60)) <= 28 and len(f("w1 w2 w3 w4 w5 w6").split()) <= 4
+
+
+def test_brain_validate_menyimpan_overlay_name():
+    from backend import brain
+    words = [{"start": 0.2 + i * 0.6, "end": 0.6 + i * 0.6, "text": "k"}
+             for i in range(130)]
+    m = [{"start": 0.2, "end": 65.0, "title": "T", "score": 9,
+          "overlay_name": "Budi Santoso"}]
+    out = brain._validate(m, words, 120.0)
+    assert out and out[0]["overlay_name"] == "Budi Santoso"
+
+
+def test_prompt_aturan_overlay_name():
+    from backend import brain
+    p = brain.PROMPT
+    assert '"overlay_name"' in p
+    assert "NAMA SAJA 1-4 kata" in p
+    assert "SALAH NAMA" in p                     # akurasi nomor satu
+    assert '"overlay_name": ""' in p              # skema JSON
+
+
+def test_pipeline_overlay_pakai_nama_dulu(monkeypatch, tmp_path):
+    """Overlay pembuka 2-3 dtk: overlay_name (nama) DIDAHULUKAN daripada
+    hook kalimat panjang; kosong -> hook (fallback aman)."""
+    from backend import pipeline
+    calls = {}
+    monkeypatch.setattr(pipeline.config, "WATERMARK", False)
+    def fake_hook(text, tw, th, path, dur=2.6):
+        calls["text"] = text
+        from pathlib import Path
+        p = Path(path)
+        p.write_bytes(b"x")
+        return p
+    from backend import overlays as _ov
+    monkeypatch.setattr(_ov, "make_hook", fake_hook)
+    m = {"overlay_name": "Budi", "hook": "Rahasia kenapa dia cepat kaya"}
+    wm, hk, d = pipeline._overlay_assets(720, 1280, tmp_path, m, "clip_01")
+    assert calls["text"] == "Budi" and hk
+    m = {"overlay_name": "", "hook": "Rahasa kenapa dia cepat kaya"}
+    pipeline._overlay_assets(720, 1280, tmp_path, m, "clip_02")
+    assert calls["text"] == "Rahasa kenapa dia cepat kaya"

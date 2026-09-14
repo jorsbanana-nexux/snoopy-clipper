@@ -97,8 +97,10 @@ def _hook_font(size: int):
 # shadow gelap: (radius sbg fraksi LEBAR KLIP, alpha) — dari lapis terluar
 # paling lembut ke terdalam. 5 lapis = "gelap radius jauh hampir menutupi
 # layar, tapi batas wajar tidak terlalu hitam" — efek gradient lembut.
-_HOOK_SHADOW = ((0.045, 55), (0.030, 80), (0.018, 115), (0.009, 160),
-                (0.004, 210))
+_HOOK_TEXT_A = 205   # teks ~80% — semi-transparan keren (owner 2026-09-14:
+                    # intensitas dikurangi; dulu 247 nyaris solid)
+_HOOK_SHADOW = ((0.045, 38), (0.030, 55), (0.018, 80), (0.009, 110),
+                (0.004, 145))   # shadow ikut dilembutkan proporsional
 
 
 def _with_alpha(im, a: float):
@@ -140,7 +142,7 @@ def make_hook(hook_text, tw, th, path, dur=2.6):
     d = ImageDraw.Draw(base)
     for y, ln in zip(ys, lines):
         w = d.textlength(ln, font=f)
-        d.text(((tw - w) / 2, y), ln, font=f, fill=(255, 255, 255, 247))
+        d.text(((tw - w) / 2, y), ln, font=f, fill=(255, 255, 255, _HOOK_TEXT_A))
     # ANIMASI ala fade subtitle: 0.15s transparan (jeda masuk) -> fade-in
     # 0.28s -> hold -> fade-out 0.55s dgn blur bertambah sampai lenyap.
     lead, fin, fout = 0.15, 0.28, 0.55

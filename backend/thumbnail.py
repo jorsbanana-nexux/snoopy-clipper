@@ -217,6 +217,8 @@ _TEXT_W_FRAC = 0.90        # lebar maksimum blok teks (diperlebar: teks lebih be
 _TEXT_BOTTOM_FRAC = 0.885   # dasar blok teks dari atas layar
 _TEXT_MAX_LINES = 3
 _TEXT_SIZE_FRAC = 0.075     # titik awal ukuran font (fraksi tinggi) — auto-fit turun
+_TEXT_ALPHA = 225           # teks sedikit transparan (owner 2026-09-14: keren,
+                            # nyatu dgn foto — dulu 255 solid penuh)
 _TEXT_MAX_BLOCK_FRAC = 0.40
 _LINE_SPACING = 1.08   # rapat-padat: baris berhimpit rapi, shadow tetap bernafas
 
@@ -363,7 +365,7 @@ def _podcast_text(img, title, content_type, topic_tag):
         # TEKS putih bersih — no stroke, no outline, hanya shadow di belakang
         d = ImageDraw.Draw(base)
         for x, y, line, _ in pos:
-            d.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+            d.text((x, y), line, font=font, fill=(255, 255, 255, _TEXT_ALPHA))
 
         # EMOJI KUNING TERSNYUM KARTUN — selalu menumpang DI ATAS teks
         # (posisinya persis di foto referensi: duduk di atas, menutupi sedikit)
